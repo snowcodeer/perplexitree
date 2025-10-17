@@ -14,6 +14,10 @@ body {
     flex-direction: column;
 }
 
+body.day-mode {
+    background: #F5E6D3; /* Warm beige/cream parchment color */
+}
+
 h1 {
     color: #ecf0f1;
     padding: 10px 20px;
@@ -22,6 +26,12 @@ h1 {
     text-align: center;
     font-size: 24px;
     text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+}
+
+body.day-mode h1 {
+    color: #2c3e50; /* Dark text for light background */
+    background: rgba(255, 255, 255, 0.3);
+    text-shadow: 1px 1px 2px rgba(255, 255, 255, 0.5);
 }
 
 canvas {
@@ -53,6 +63,15 @@ canvas {
 
 .controls button:hover {
     background: rgba(52, 152, 219, 1);
+}
+
+body.day-mode .controls button {
+    background: rgba(44, 62, 80, 0.9); /* Dark blue for light mode */
+    color: #F5E6D3; /* Light text */
+}
+
+body.day-mode .controls button:hover {
+    background: rgba(44, 62, 80, 1);
 }
 
 .tools {
@@ -91,6 +110,24 @@ canvas {
     background: rgba(231, 76, 60, 1);
 }
 
+body.day-mode .tool-btn {
+    background: rgba(44, 62, 80, 0.9); /* Dark blue for light mode */
+    color: #F5E6D3; /* Light text */
+}
+
+body.day-mode .tool-btn:hover {
+    background: rgba(44, 62, 80, 1);
+}
+
+body.day-mode .tool-btn.active {
+    background: rgba(231, 76, 60, 0.9); /* Keep red for active */
+    color: white;
+}
+
+body.day-mode .tool-btn.active:hover {
+    background: rgba(231, 76, 60, 1);
+}
+
 .status {
     position: absolute;
     bottom: 20px;
@@ -102,4 +139,9 @@ canvas {
     font-size: 14px;
     max-width: 300px;
     z-index: 10;
+}
+
+body.day-mode .status {
+    background: rgba(44, 62, 80, 0.9);
+    color: #F5E6D3;
 }

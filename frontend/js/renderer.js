@@ -16,6 +16,7 @@ class Renderer {
         this.renderLeaves();
         this.renderFruits();
         this.renderFlowers();
+        this.renderLightSource();
         
         if ((this.game.currentTool === 'growth' || this.game.currentTool === 'leaves' || this.game.currentTool === 'fruit' || this.game.currentTool === 'flower' || this.game.currentTool === 'reposition') && this.game.hoveredNode) {
             this.renderHoveredNode();
@@ -189,7 +190,27 @@ class Renderer {
         });
     }
     
-    // Light source rendering removed
+    renderLightSource() {
+        if (this.game.isNightMode) {
+            // Render moon
+            this.ctx.shadowColor = 'rgba(200, 200, 255, 0.6)';
+            this.ctx.shadowBlur = 25;
+            this.ctx.fillStyle = '#E6E6FA'; // Light purple/white
+            this.ctx.beginPath();
+            this.ctx.arc(this.game.lightSource.x, this.game.lightSource.y, this.game.lightSource.radius, 0, Math.PI * 2);
+            this.ctx.fill();
+            this.ctx.shadowBlur = 0;
+        } else {
+            // Render sun
+            this.ctx.shadowColor = 'rgba(255, 255, 0, 0.8)';
+            this.ctx.shadowBlur = 30;
+            this.ctx.fillStyle = '#FFD700';
+            this.ctx.beginPath();
+            this.ctx.arc(this.game.lightSource.x, this.game.lightSource.y, this.game.lightSource.radius, 0, Math.PI * 2);
+            this.ctx.fill();
+            this.ctx.shadowBlur = 0;
+        }
+    }
     
     renderHoveredNode() {
         this.ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
@@ -199,7 +220,8 @@ class Renderer {
     }
     
     renderUI() {
-        this.ctx.fillStyle = '#ecf0f1';
+        // Keep text color consistent - it's rendered over the black soil
+        this.ctx.fillStyle = '#ecf0f1'; // Light text that shows well over dark soil
         this.ctx.font = '14px Arial';
         
         if (this.game.currentTool === 'growth') {

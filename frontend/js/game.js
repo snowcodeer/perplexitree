@@ -17,6 +17,7 @@ class UltraSimplePrune {
         this.dragEnd = null;
         this.isRepositioning = false;
         this.repositioningNode = null;
+        this.isNightMode = false;
         this.hoveredNode = null;
         
         // Game objects
@@ -108,6 +109,10 @@ class UltraSimplePrune {
         
         document.getElementById('restartBtn').addEventListener('click', () => {
             this.restartGame();
+        });
+        
+        document.getElementById('dayNightBtn').addEventListener('click', () => {
+            this.toggleDayNight();
         });
         
         this.canvas.addEventListener('mousedown', (e) => this.handleMouseDown(e));
@@ -456,7 +461,7 @@ class UltraSimplePrune {
             x: flower.x,
             y: flower.y,
             type: fruitType,
-            size: 24 + Math.random() * 12, // 24-36 pixels (much bigger)
+            size: 36 + Math.random() * 16, // 36-52 pixels (even bigger)
             sway: Math.random() * Math.PI * 2,
             branch: flower.branch
         });
@@ -504,7 +509,7 @@ class UltraSimplePrune {
             x: node.x,
             y: node.y,
             type: flowerType,
-            size: 20 + Math.random() * 10, // 20-30 pixels (much bigger)
+            size: 28 + Math.random() * 12, // 28-40 pixels (even bigger)
             sway: Math.random() * Math.PI * 2,
             branch: this.tree.branches.find(branch => 
                 Math.abs(branch.end.x - node.x) < 5 && 
@@ -605,6 +610,24 @@ class UltraSimplePrune {
                 leaf.y = leafY + leaf.offsetY;
             }
         });
+    }
+    
+    toggleDayNight() {
+        this.isNightMode = !this.isNightMode;
+        const btn = document.getElementById('dayNightBtn');
+        const body = document.body;
+        
+        if (this.isNightMode) {
+            btn.textContent = '☀️ Day Mode';
+            btn.style.background = 'rgba(72, 61, 139, 0.9)'; // Purple for night
+            body.classList.remove('day-mode');
+            this.updateStatus('Switched to night mode - moon is out!');
+        } else {
+            btn.textContent = '🌙 Night Mode';
+            btn.style.background = 'rgba(245, 230, 211, 0.9)'; // Warm beige for day
+            body.classList.add('day-mode');
+            this.updateStatus('Switched to day mode - sun is shining!');
+        }
     }
     
     restartGame() {
