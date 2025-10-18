@@ -143,6 +143,10 @@ class UltraSimplePrune {
             this.setTool('fruit');
         });
         
+        document.getElementById('harvestTool').addEventListener('click', () => {
+            this.setTool('harvest');
+        });
+        
         document.getElementById('flowerTool').addEventListener('click', () => {
             this.setTool('flower');
         });
@@ -206,6 +210,8 @@ class UltraSimplePrune {
             document.getElementById('leavesTool').classList.add('active');
         } else if (tool === 'fruit') {
             document.getElementById('fruitTool').classList.add('active');
+        } else if (tool === 'harvest') {
+            document.getElementById('harvestTool').classList.add('active');
         } else if (tool === 'flower') {
             document.getElementById('flowerTool').classList.add('active');
         } else if (tool === 'reposition') {
@@ -254,6 +260,13 @@ class UltraSimplePrune {
             } else {
                 console.log('Fruit tool: no hovered node');
                 this.updateStatus('Hover over a flower first, then click to transform it into fruit!');
+            }
+        } else if (this.currentTool === 'harvest') {
+            if (this.hoveredNode && this.hoveredNode.isFruit) {
+                console.log('Harvest tool: clicked on fruit', this.hoveredNode);
+                this.harvestFruit(this.hoveredNode);
+            } else {
+                this.updateStatus('Hover over an apple first, then click to harvest knowledge!');
             }
         } else if (this.currentTool === 'flower') {
             if (this.hoveredNode) {
@@ -305,7 +318,7 @@ class UltraSimplePrune {
             }
             
             this.panStart = { ...this.mousePos };
-        } else if (this.currentTool === 'growth' || this.currentTool === 'leaves' || this.currentTool === 'fruit' || this.currentTool === 'flower' || this.currentTool === 'reposition' || this.currentTool === 'study' || this.currentTool === 'pan') {
+        } else if (this.currentTool === 'growth' || this.currentTool === 'leaves' || this.currentTool === 'fruit' || this.currentTool === 'harvest' || this.currentTool === 'flower' || this.currentTool === 'reposition' || this.currentTool === 'study' || this.currentTool === 'pan') {
             this.hoveredNode = this.getNodeAtPosition(this.mousePos);
         }
         
@@ -411,6 +424,15 @@ class UltraSimplePrune {
                 };
             }
             return trunkPoint;
+        }
+        
+        // Check for fruits first (if harvest tool is active)
+        if (this.currentTool === 'harvest') {
+            for (let fruit of this.tree.fruits) {
+                if (Math.abs(adjustedPos.x - fruit.x) < 15 && Math.abs(adjustedPos.y - fruit.y) < 15) {
+                    return { x: fruit.x, y: fruit.y, isFruit: true, fruit: fruit };
+                }
+            }
         }
         
         // Check for flowers first (if fruit tool is active)
@@ -677,6 +699,222 @@ class UltraSimplePrune {
         });
         
         this.updateStatus(`Transformed ${flower.type} into ${fruitType} - fruit of labour!`);
+    }
+    
+    async harvestFruit(node) {
+        console.log('Harvesting fruit at:', node.x, node.y);
+        
+        // Check if we clicked on a fruit
+        if (!node.isFruit || !node.fruit) {
+            this.updateStatus('Harvest tool only works on apples! Click on an apple to harvest knowledge.');
+            return;
+        }
+        
+        const fruit = node.fruit;
+        
+        // Get flashcards for this session to create a quiz
+        if (this.flashcards.length === 0) {
+            this.updateStatus('No flashcards available for quiz! Create some flashcards first.');
+            return;
+        }
+        
+        // Create a quiz from the flashcards
+        await this.createQuizFromFlashcards();
+    }
+    
+    async createQuizFromFlashcards() {
+        try {
+            // Select 5 random flashcards for the quiz
+            const quizFlashcards = this.getRandomFlashcards(5);
+            
+            if (quizFlashcards.length === 0) {
+                this.updateStatus('No flashcards available for quiz!');
+                return;
+            }
+            
+            // Create multiple choice questions from flashcards
+            const quizQuestions = await this.generateMultipleChoiceQuestions(quizFlashcards);
+            
+            // Show the quiz modal
+            this.showQuizModal(quizQuestions);
+            
+        } catch (error) {
+            console.error('Error creating quiz:', error);
+            this.updateStatus('Error creating quiz. Please try again.');
+        }
+    }
+    
+    getRandomFlashcards(count) {
+        const shuffled = [...this.flashcards].sort(() => 0.5 - Math.random());
+        return shuffled.slice(0, Math.min(count, this.flashcards.length));
+    }
+    
+    async generateMultipleChoiceQuestions(flashcards) {
+        try {
+            // Use AI to generate quiz questions based on the flashcards
+            const response = await fetch('/api/generate-quiz', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    flashcards: flashcards
+                })
+            });
+            
+            if (!response.ok) {
+                throw new Error('Failed to generate quiz');
+            }
+            
+            const data = await response.json();
+            return data.questions || [];
+            
+        } catch (error) {
+            console.error('Error generating AI quiz:', error);
+            // Fallback to simple shuffling if AI fails
+            return this.generateSimpleQuestions(flashcards);
+        }
+    }
+    
+    generateSimpleQuestions(flashcards) {
+        const questions = [];
+        
+        for (const flashcard of flashcards) {
+            // Create a multiple choice question from the flashcard
+            const question = {
+                question: flashcard.front,
+                correctAnswer: flashcard.back,
+                options: [flashcard.back]
+            };
+            
+            // Add 3 wrong answers from other flashcards
+            const otherFlashcards = this.flashcards.filter(f => f !== flashcard);
+            const wrongAnswers = this.getRandomFlashcards(3).map(f => f.back);
+            
+            // Remove duplicates and ensure we have 4 options
+            const allOptions = [...new Set([...question.options, ...wrongAnswers])];
+            question.options = allOptions.slice(0, 4);
+            
+            // Shuffle the options
+            question.options = question.options.sort(() => 0.5 - Math.random());
+            
+            questions.push(question);
+        }
+        
+        return questions;
+    }
+    
+    showQuizModal(questions) {
+        const modal = document.getElementById('quizModal');
+        const questionElement = document.getElementById('quizQuestion');
+        const optionsElement = document.getElementById('quizOptions');
+        const resultElement = document.getElementById('quizResult');
+        const scoreElement = document.getElementById('quizScore');
+        
+        // Reset modal state
+        resultElement.style.display = 'none';
+        scoreElement.style.display = 'none';
+        
+        let currentQuestionIndex = 0;
+        let score = 0;
+        let selectedAnswer = null;
+        
+        const showQuestion = () => {
+            if (currentQuestionIndex >= questions.length) {
+                // Quiz completed
+                showScore();
+                return;
+            }
+            
+            const question = questions[currentQuestionIndex];
+            questionElement.textContent = `Question ${currentQuestionIndex + 1}: ${question.question}`;
+            
+            optionsElement.innerHTML = '';
+            question.options.forEach((option, index) => {
+                const optionElement = document.createElement('div');
+                optionElement.className = 'quiz-option';
+                optionElement.textContent = option;
+                optionElement.addEventListener('click', () => selectAnswer(option, optionElement));
+                optionsElement.appendChild(optionElement);
+            });
+        };
+        
+        const selectAnswer = (answer, element) => {
+            // Remove previous selection
+            optionsElement.querySelectorAll('.quiz-option').forEach(opt => {
+                opt.classList.remove('selected');
+            });
+            
+            // Add selection to clicked option
+            element.classList.add('selected');
+            selectedAnswer = answer;
+            
+            // Show result after a short delay
+            setTimeout(() => {
+                showResult();
+            }, 500);
+        };
+        
+        const showResult = () => {
+            const question = questions[currentQuestionIndex];
+            const isCorrect = selectedAnswer === question.correctAnswer;
+            
+            if (isCorrect) {
+                score++;
+            }
+            
+            // Highlight correct and incorrect answers
+            optionsElement.querySelectorAll('.quiz-option').forEach(opt => {
+                if (opt.textContent === question.correctAnswer) {
+                    opt.classList.add('correct');
+                } else if (opt.textContent === selectedAnswer && !isCorrect) {
+                    opt.classList.add('incorrect');
+                }
+            });
+            
+            // Show result message
+            resultElement.textContent = isCorrect ? 'Correct! 🎉' : `Incorrect. The correct answer is: ${question.correctAnswer}`;
+            resultElement.className = `quiz-result ${isCorrect ? 'correct' : 'incorrect'}`;
+            resultElement.style.display = 'block';
+            
+            // Move to next question after delay
+            setTimeout(() => {
+                currentQuestionIndex++;
+                showQuestion();
+            }, 2000);
+        };
+        
+        const showScore = () => {
+            questionElement.textContent = 'Quiz Complete!';
+            optionsElement.innerHTML = '';
+            resultElement.style.display = 'none';
+            
+            const percentage = Math.round((score / questions.length) * 100);
+            scoreElement.innerHTML = `
+                <div>Your Score: ${score}/${questions.length}</div>
+                <div>Percentage: ${percentage}%</div>
+                <div>${percentage >= 80 ? 'Excellent! 🌟' : percentage >= 60 ? 'Good job! 👍' : 'Keep studying! 📚'}</div>
+            `;
+            scoreElement.style.display = 'block';
+        };
+        
+        // Show first question
+        showQuestion();
+        
+        // Show modal
+        modal.style.display = 'flex';
+        
+        // Close modal event listener
+        document.getElementById('closeQuizModal').onclick = () => {
+            modal.style.display = 'none';
+        };
+        
+        // Close modal when clicking outside
+        modal.onclick = (e) => {
+            if (e.target === modal) {
+                modal.style.display = 'none';
+            }
+        };
     }
     
     growFlowerOnNode(node) {

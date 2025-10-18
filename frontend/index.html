@@ -30,6 +30,7 @@
         <button id="leavesTool" class="tool-btn" title="flashcard tool - click on nodes to create flashcards"><i class="fas fa-leaf"></i></button>
         <button id="flowerTool" class="tool-btn" title="blossom your knowledge - click on branch ends to add flowers"><i class="fas fa-seedling"></i></button>
         <button id="fruitTool" class="tool-btn" title="bear fruit of labour - click on flowers to transform them into apples"><i class="fas fa-apple-alt"></i></button>
+        <button id="harvestTool" class="tool-btn" title="harvest knowledge - click on apples to take a quiz"><i class="fas fa-hand-paper"></i></button>
         <button id="repositionTool" class="tool-btn" title="reposition tool - drag branch ends to move and resize"><i class="fas fa-edit"></i></button>
     </div>
 
@@ -64,6 +65,26 @@
             <div class="modal-body">
                 <div id="sessionsList">
                     <p>Loading sessions...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Modal for quiz -->
+    <div id="quizModal" class="study-modal">
+        <div class="modal-content quiz-modal-content">
+            <div class="modal-header">
+                <h3 id="quizTitle">Knowledge Quiz</h3>
+                <div class="modal-controls">
+                    <button id="closeQuizModal" class="modal-btn" title="close">×</button>
+                </div>
+            </div>
+            <div class="modal-body">
+                <div id="quizContent">
+                    <div id="quizQuestion" class="quiz-question"></div>
+                    <div id="quizOptions" class="quiz-options"></div>
+                    <div id="quizResult" class="quiz-result" style="display: none;"></div>
+                    <div id="quizScore" class="quiz-score" style="display: none;"></div>
                 </div>
             </div>
         </div>

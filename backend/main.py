@@ -68,6 +68,9 @@ class CreateFlashcardsRequest(BaseModel):
 class DeleteGameStateRequest(BaseModel):
     session_id: int
 
+class GenerateQuizRequest(BaseModel):
+    flashcards: list
+
 @app.post("/api/search")
 async def search(request: SearchRequest):
     try:
@@ -491,7 +494,17 @@ async def create_flashcards(request: CreateFlashcardsRequest, db: Session = Depe
         # Create a prompt to generate flashcards
         flashcard_prompt = f"""
         Based on the following content about "{search_result_data.get('title', 'Unknown Topic')}", create exactly {request.count} flashcards.
-        Each flashcard should have a clear question on the front and a detailed answer on the back.
+        Each flashcard should have a clear question on the front and a detailed, well-written answer on the back.
+        Vary the answer length appropriately - simple concepts can have shorter answers (100-150 chars), while complex topics may need longer explanations (200-400 chars).
+        
+        IMPORTANT: Use normal sentence casing:
+        - Capitalize only the first letter of each sentence
+        - Capitalize proper nouns (names, places, organizations, etc.)
+        - Use lowercase for common nouns and adjectives
+        - Do NOT use all capital letters
+        - End sentences with proper punctuation
+        - Write in complete, grammatically correct sentences
+        
         Focus on key concepts, definitions, and important facts.
         
         Content: {search_result_data.get('llm_content', search_result_data.get('snippet', ''))}
@@ -500,7 +513,7 @@ async def create_flashcards(request: CreateFlashcardsRequest, db: Session = Depe
         [
             {{
                 "front": "Question or term",
-                "back": "Answer or definition",
+                "back": "Properly capitalized answer with correct grammar",
                 "difficulty": "easy|medium|hard"
             }}
         ]
@@ -638,6 +651,103 @@ async def delete_game_state(request: DeleteGameStateRequest, db: Session = Depen
         
     except Exception as e:
         db.rollback()
+        return {"error": str(e), "success": False}
+
+@app.post("/api/generate-quiz")
+async def generate_quiz(request: GenerateQuizRequest):
+    try:
+        client = Perplexity()
+        
+        # Create a prompt to generate quiz questions from flashcards
+        flashcard_data = "\n".join([f"Q: {card.get('front', '')}\nA: {card.get('back', '')}" for card in request.flashcards])
+        
+        quiz_prompt = f"""
+        Based on these flashcards, create 5 challenging multiple choice quiz questions that test understanding rather than memorization.
+        
+        Flashcards:
+        {flashcard_data}
+        
+        For each question:
+        - Create a NEW question that tests understanding of the concepts, not just the exact flashcard content
+        - Make the correct answer shorter and more concise (50-100 characters)
+        - Create 3 plausible but incorrect alternatives that are also short and concise
+        - Make the questions challenging but fair
+        - Use normal sentence casing (not all caps)
+        
+        Return as JSON array with this structure:
+        [
+            {{
+                "question": "New challenging question",
+                "correctAnswer": "Short correct answer",
+                "options": ["Correct answer", "Wrong option 1", "Wrong option 2", "Wrong option 3"]
+            }}
+        ]
+        """
+        
+        # Define JSON schema for structured output
+        schema = {
+            "type": "object",
+            "properties": {
+                "questions": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "question": {"type": "string"},
+                            "correctAnswer": {"type": "string"},
+                            "options": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "minItems": 4,
+                                "maxItems": 4
+                            }
+                        },
+                        "required": ["question", "correctAnswer", "options"]
+                    },
+                    "minItems": 5,
+                    "maxItems": 5
+                }
+            },
+            "required": ["questions"]
+        }
+        
+        completion = client.chat.completions.create(
+            model="sonar-pro",
+            messages=[
+                {"role": "user", "content": quiz_prompt}
+            ],
+            response_format={
+                "type": "json_schema",
+                "json_schema": {"schema": schema}
+            }
+        )
+        
+        # Parse the structured JSON response
+        response_content = completion.choices[0].message.content
+        try:
+            structured_data = json.loads(response_content)
+        except json.JSONDecodeError as e:
+            raise HTTPException(status_code=500, detail="Failed to parse quiz data")
+        
+        # Shuffle options for each question
+        questions = []
+        for question_data in structured_data.get("questions", []):
+            options = question_data["options"]
+            # Shuffle the options
+            import random
+            random.shuffle(options)
+            questions.append({
+                "question": question_data["question"],
+                "correctAnswer": question_data["correctAnswer"],
+                "options": options
+            })
+        
+        return {
+            "success": True,
+            "questions": questions
+        }
+        
+    except Exception as e:
         return {"error": str(e), "success": False}
 
 if __name__ == "__main__":
