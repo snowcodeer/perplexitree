@@ -738,10 +738,10 @@ class UltraSimplePrune {
         this.welcomeSequence.isActive = true;
         this.welcomeSequence.hasShownPrompt = false;
         this.welcomeSequence.originalPanY = this.cameraOffset.y;
-        // Pan down so dirt covers about 40% of screen
-        this.welcomeSequence.targetPanY = this.height * 0.4;
+        // Pan up so dirt covers about 40% of screen (show more dirt below)
+        this.welcomeSequence.targetPanY = -this.height * 0.4;
         
-        // Start panning down
+        // Start panning up
         this.animateWelcomePan();
     }
     
@@ -834,9 +834,7 @@ class UltraSimplePrune {
     }
     
     triggerFirstGrowth() {
-        // Trigger growth from the trunk (first node)
-        const trunkNode = { x: this.tree.x, y: this.tree.y };
-        this.growBranchesFromNode(trunkNode);
+        // Just update status, no automatic growth
         this.updateStatus('Game ready! Use growth tool to grow branches, cut tool to prune them.');
     }
     
