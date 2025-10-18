@@ -305,9 +305,11 @@ class UltraSimplePrune {
             }
             
             this.panStart = { ...this.mousePos };
-        } else if (this.currentTool === 'growth' || this.currentTool === 'leaves' || this.currentTool === 'fruit' || this.currentTool === 'flower' || this.currentTool === 'reposition' || this.currentTool === 'study' || this.currentTool === 'cut' || this.currentTool === 'pan') {
+        } else if (this.currentTool === 'growth' || this.currentTool === 'leaves' || this.currentTool === 'fruit' || this.currentTool === 'flower' || this.currentTool === 'reposition' || this.currentTool === 'study' || this.currentTool === 'pan') {
             this.hoveredNode = this.getNodeAtPosition(this.mousePos);
-        } else if (this.currentTool === 'cut' && this.isDragging) {
+        }
+        
+        if (this.currentTool === 'cut' && this.isDragging) {
             this.dragEnd = { ...this.mousePos };
         }
         
