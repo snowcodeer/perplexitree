@@ -1122,20 +1122,26 @@ class UltraSimplePrune {
             let allResults = [];
             let attempts = 0;
             const maxAttempts = 10; // Prevent infinite loops
+            let negativePrompts = []; // Track existing search results to exclude
             
             // Keep searching until we have enough unique results for all branches
             while (allResults.length < newBranches.length && attempts < maxAttempts) {
+                // Build negative prompts from existing results
+                const currentNegativePrompts = allResults.map(result => result.title);
+                
                 const response = await fetch('http://localhost:8001/api/web-search', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ 
                         query: researchQuery,
-                        count: Math.max(5, newBranches.length - allResults.length + 2) // Get extra results to account for duplicates
+                        count: Math.max(5, newBranches.length - allResults.length + 2), // Get extra results to account for duplicates
+                        negative_prompts: currentNegativePrompts
                     })
                 });
                 
                 const data = await response.json();
                 console.log(`Search attempt ${attempts + 1} results:`, data);
+                console.log(`Using negative prompts:`, currentNegativePrompts);
                 
                 if (data.results && data.results.length > 0) {
                     // Filter out duplicates and add to our collection
@@ -1161,7 +1167,11 @@ class UltraSimplePrune {
             });
             
             const assignedCount = Math.min(allResults.length, newBranches.length);
-            this.updateStatus(`Found ${assignedCount} unique web search results for new branches!`);
+            if (attempts > 1) {
+                this.updateStatus(`Found ${assignedCount} unique web search results after ${attempts} attempts with negative prompts!`);
+            } else {
+                this.updateStatus(`Found ${assignedCount} unique web search results for new branches!`);
+            }
             
         } catch (error) {
             console.error('Web search error:', error);
