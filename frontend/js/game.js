@@ -184,10 +184,7 @@ class UltraSimplePrune {
         console.log('Tree branches length:', this.tree.branches.length);
         console.log('Is loading game:', this.isLoadingGame);
         
-        // Ambient music disabled for now
-        // if (this.audioManager && this.audioManager.musicEnabled) {
-        //     this.audioManager.startAmbientMusic();
-        // }
+        // Music functionality removed
         
         // Only show welcome sequence if there are no branches AND we're not loading a game
         if (this.tree.branches.length === 0 && !this.isLoadingGame) {

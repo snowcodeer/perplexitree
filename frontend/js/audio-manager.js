@@ -54,19 +54,7 @@ class AudioManager {
         localStorage.setItem('perplexitree_sound_enabled', this.soundEnabled.toString());
     }
     
-    toggleMusic() {
-        this.musicEnabled = !this.musicEnabled;
-        this.savePreferences();
-        
-        if (this.musicEnabled) {
-            this.startAmbientMusic();
-        } else {
-            this.stopAmbientMusic();
-        }
-        
-        this.updateMusicButton();
-        console.log('Music', this.musicEnabled ? 'enabled' : 'disabled');
-    }
+    // Music functionality removed - keeping only sound effects
     
     toggleSound() {
         this.soundEnabled = !this.soundEnabled;
@@ -75,96 +63,7 @@ class AudioManager {
         console.log('Sound effects', this.soundEnabled ? 'enabled' : 'disabled');
     }
     
-    startAmbientMusic() {
-        if (!this.musicEnabled || !this.audioContext) return;
-        
-        // Ensure audio context is running
-        if (this.audioContext.state === 'suspended') {
-            console.log('Audio context suspended, cannot start music');
-            return;
-        }
-        
-        // Stop existing music
-        this.stopAmbientMusic();
-        
-        // Create a simple ambient soundscape
-        this.ambientMusic = this.createAmbientSoundscape();
-        if (this.ambientMusic) {
-            this.ambientMusic.start();
-            console.log('Ambient music started');
-            this.updateMusicButton(); // Update button to show pulsing animation
-        }
-    }
-    
-    stopAmbientMusic() {
-        if (this.ambientMusic) {
-            this.ambientMusic.stop();
-            this.ambientMusic = null;
-            this.updateMusicButton(); // Update button to remove pulsing animation
-        }
-    }
-    
-    createAmbientSoundscape() {
-        if (!this.audioContext) return null;
-        
-        const oscillator = this.audioContext.createOscillator();
-        const gainNode = this.audioContext.createGain();
-        const filterNode = this.audioContext.createBiquadFilter();
-        
-        // Create a gentle, nature-like ambient tone
-        oscillator.type = 'sine';
-        oscillator.frequency.setValueAtTime(110, this.audioContext.currentTime); // Low A
-        
-        // Add subtle frequency modulation for movement
-        const lfo = this.audioContext.createOscillator();
-        const lfoGain = this.audioContext.createGain();
-        lfo.type = 'sine';
-        lfo.frequency.setValueAtTime(0.05, this.audioContext.currentTime); // Very slow modulation
-        lfoGain.gain.setValueAtTime(3, this.audioContext.currentTime); // Subtle pitch variation
-        
-        // Filter for warmth
-        filterNode.type = 'lowpass';
-        filterNode.frequency.setValueAtTime(600, this.audioContext.currentTime);
-        filterNode.Q.setValueAtTime(1, this.audioContext.currentTime);
-        
-        // Volume control - fade in gradually
-        gainNode.gain.setValueAtTime(0, this.audioContext.currentTime);
-        gainNode.gain.linearRampToValueAtTime(this.currentMusicVolume * 0.2, this.audioContext.currentTime + 3);
-        
-        // Connect the nodes
-        lfo.connect(lfoGain);
-        lfoGain.connect(oscillator.frequency);
-        oscillator.connect(filterNode);
-        filterNode.connect(gainNode);
-        gainNode.connect(this.audioContext.destination);
-        
-        // Start the LFO
-        lfo.start();
-        
-        return {
-            oscillator: oscillator,
-            gainNode: gainNode,
-            lfo: lfo,
-            start: () => {
-                oscillator.start();
-                // Restart the oscillator when it ends to create a loop
-                oscillator.onended = () => {
-                    if (this.musicEnabled && this.ambientMusic) {
-                        const newMusic = this.createAmbientSoundscape();
-                        if (newMusic) {
-                            this.ambientMusic = newMusic;
-                            this.ambientMusic.start();
-                        }
-                    }
-                };
-            },
-            stop: () => {
-                oscillator.onended = null;
-                oscillator.stop();
-                lfo.stop();
-            }
-        };
-    }
+    // Ambient music functionality removed
     
     playSound(soundName) {
         if (!this.soundEnabled || !this.audioContext) return;
@@ -213,28 +112,7 @@ class AudioManager {
         this.playSound('click');
     }
     
-    updateMusicButton() {
-        const musicBtn = document.getElementById('musicToggle');
-        if (musicBtn) {
-            const icon = musicBtn.querySelector('i');
-            if (this.musicEnabled) {
-                icon.className = 'fas fa-volume-up';
-                musicBtn.title = 'Mute ambient music (currently disabled)';
-                musicBtn.style.opacity = '1';
-                // Add pulsing animation when music is enabled
-                if (this.ambientMusic) {
-                    musicBtn.classList.add('pulse');
-                } else {
-                    musicBtn.classList.remove('pulse');
-                }
-            } else {
-                icon.className = 'fas fa-volume-mute';
-                musicBtn.title = 'Enable ambient music (currently disabled)';
-                musicBtn.style.opacity = '0.5';
-                musicBtn.classList.remove('pulse');
-            }
-        }
-    }
+    // Music button removed
     
     updateSoundButton() {
         const soundBtn = document.getElementById('soundToggle');
