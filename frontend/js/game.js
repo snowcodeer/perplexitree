@@ -514,7 +514,7 @@ class UltraSimplePrune {
             this.tree.branches.push(branch);
         }
         
-        // Assign search results to the 5 initial branches
+        // Assign search results to the 5 initial branches (FIRST 5 NODES HAVE NO SOURCE LINKS)
         console.log('Assigning search results to branches. Search results:', this.searchResults);
         console.log('Available branches:', this.tree.branches.length);
         if (this.searchResults && this.searchResults.length > 0) {
@@ -522,8 +522,11 @@ class UltraSimplePrune {
             console.log('Last 5 branches:', lastFiveBranches);
             lastFiveBranches.forEach((branch, index) => {
                 if (this.searchResults[index]) {
-                    branch.searchResult = this.searchResults[index];
-                    console.log(`Assigned search result ${index} to branch:`, branch.searchResult);
+                    // Remove URL from first 5 search results (no source links for initial topics)
+                    const searchResult = { ...this.searchResults[index] };
+                    delete searchResult.url;
+                    branch.searchResult = searchResult;
+                    console.log(`Assigned search result ${index} to branch (NO URL):`, branch.searchResult);
                 }
             });
         } else {
@@ -1015,13 +1018,14 @@ class UltraSimplePrune {
         const title = document.getElementById('modalTitle');
         const description = document.getElementById('modalDescription');
         const flashcardBtn = document.getElementById('showFlashcardsBtn');
+        const readFromSourceBtn = document.getElementById('readFromSourceBtn');
         
         if (modal && title && description) {
-            title.textContent = this.toProperCase(searchResult.title);
+            title.textContent = searchResult.title;
             const content = searchResult.snippet || searchResult.llm_content || 'No description available';
             
             // Create formatted content
-            let formattedContent = this.formatContent(this.toProperCase(content));
+            let formattedContent = this.formatContent(content);
             
             description.innerHTML = formattedContent;
             
@@ -1038,6 +1042,18 @@ class UltraSimplePrune {
                     };
                 } else {
                     flashcardBtn.style.display = 'none';
+                }
+            }
+            
+            // Show/hide read from source button - only for searched nodes (not first 5)
+            if (readFromSourceBtn) {
+                if (searchResult.url) {
+                    readFromSourceBtn.style.display = 'block';
+                    readFromSourceBtn.onclick = () => {
+                        window.open(searchResult.url, '_blank');
+                    };
+                } else {
+                    readFromSourceBtn.style.display = 'none';
                 }
             }
             
@@ -1600,7 +1616,7 @@ class UltraSimplePrune {
                      onmouseover="this.style.background='rgba(255,255,255,0.1)'" 
                      onmouseout="this.style.background='transparent'"
                      onclick="app.showDeckFlashcards('${topic}')">
-                    <div style="color: #fff; font-weight: 500;">${this.toProperCase(topic)}</div>
+                    <div style="color: #fff; font-weight: 500;">${topic}</div>
                     <div style="color: #fff; font-weight: 600;">${totalCards}</div>
                     </div>
             `;
@@ -1670,7 +1686,7 @@ class UltraSimplePrune {
         
         modal.innerHTML = `
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                <h3 style="margin: 0; color: #fff;">📚 ${this.toProperCase(topic)} Deck (${deckCards.length} cards)</h3>
+                <h3 style="margin: 0; color: #fff;">📚 ${topic} Deck (${deckCards.length} cards)</h3>
                 <button onclick="this.parentElement.parentElement.remove()" style="background: none; border: none; color: #fff; font-size: 20px; cursor: pointer;">×</button>
             </div>
             <div id="deck-flashcards-container">
@@ -1681,10 +1697,10 @@ class UltraSimplePrune {
                             <span style="color: #666; font-size: 12px;">${card.difficulty}</span>
                         </div>
                         <div style="margin-bottom: 10px;">
-                            <strong style="color: #fff;">Q:</strong> ${this.formatContent(this.toProperCase(card.front))}
+                            <strong style="color: #fff;">Q:</strong> ${this.formatContent(card.front)}
                         </div>
                         <div style="margin-bottom: 10px;">
-                            <strong style="color: #fff;">A:</strong> ${this.formatContent(this.toProperCase(card.back))}
+                            <strong style="color: #fff;">A:</strong> ${this.formatContent(card.back)}
                         </div>
                         <div style="color: #3b82f6; font-size: 12px; text-align: center; margin-top: 10px; padding-top: 10px; border-top: 1px solid #333;">
                             Click to highlight source node on tree
@@ -1782,7 +1798,7 @@ class UltraSimplePrune {
             const cards = groupedFlashcards[topic];
             modalHTML += `
                 <div style="margin-bottom: 20px; border: 1px solid #333; border-radius: 5px; padding: 15px;">
-                    <h4 style="color: #3b82f6; margin: 0 0 10px 0;">${this.toProperCase(topic)} (${cards.length} cards)</h4>
+                    <h4 style="color: #3b82f6; margin: 0 0 10px 0;">${topic} (${cards.length} cards)</h4>
                     ${cards.map((card, index) => `
                         <div style="border: 1px solid #444; border-radius: 3px; margin: 8px 0; padding: 10px; background: #2a2a2a; font-family: 'Inter', sans-serif;">
                             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
@@ -1790,10 +1806,10 @@ class UltraSimplePrune {
                                 <span style="color: #666; font-size: 12px;">${card.difficulty}</span>
                             </div>
                             <div style="margin-bottom: 8px;">
-                                <strong style="color: #fff;">Q:</strong> ${this.formatContent(this.toProperCase(card.front))}
+                                <strong style="color: #fff;">Q:</strong> ${this.formatContent(card.front)}
                             </div>
                             <div>
-                                <strong style="color: #fff;">A:</strong> ${this.formatContent(this.toProperCase(card.back))}
+                                <strong style="color: #fff;">A:</strong> ${this.formatContent(card.back)}
                             </div>
                         </div>
                     `).join('')}
@@ -1828,7 +1844,7 @@ class UltraSimplePrune {
         
         modal.innerHTML = `
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                <h3 style="margin: 0; color: #fff;">Flashcards: ${this.toProperCase(topic)}</h3>
+                <h3 style="margin: 0; color: #fff;">Flashcards: ${topic}</h3>
                 <button onclick="this.parentElement.parentElement.remove()" style="background: none; border: none; color: #fff; font-size: 20px; cursor: pointer;">×</button>
             </div>
             <div id="flashcards-container">
@@ -1839,10 +1855,10 @@ class UltraSimplePrune {
                             <span style="color: #666; font-size: 12px;">${card.difficulty}</span>
                         </div>
                         <div style="margin-bottom: 10px;">
-                            <strong style="color: #fff;">Q:</strong> ${this.formatContent(this.toProperCase(card.front))}
+                            <strong style="color: #fff;">Q:</strong> ${this.formatContent(card.front)}
                         </div>
                         <div style="margin-bottom: 10px;">
-                            <strong style="color: #fff;">A:</strong> ${this.formatContent(this.toProperCase(card.back))}
+                            <strong style="color: #fff;">A:</strong> ${this.formatContent(card.back)}
                         </div>
                         <div style="color: #3b82f6; font-size: 12px; text-align: center; margin-top: 10px; padding-top: 10px; border-top: 1px solid #333;">
                             Click to highlight source node on tree
