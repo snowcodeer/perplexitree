@@ -97,14 +97,6 @@ PERPLEXITY_API_KEY=your_perplexity_api_key_here
 
 **Performance**: 60 FPS rendering, efficient collision detection, optimized canvas operations.
 
-### Written Summary 📝
-
-**perplexitree** transforms learning into an engaging visual experience by combining puzzle mechanics with AI-powered knowledge exploration. Players cultivate knowledge trees through strategic pruning while leveraging Perplexity's real-time search capabilities.
-
-**Technical Approach**: Built with FastAPI backend and vanilla JavaScript frontend, the application uses a two-phase Perplexity integration: initial queries use the `sonar-pro` chat completion model for structured knowledge area generation, while subsequent growth uses the search model with negative prompting to ensure unique web results.
-
-**Impact**: The negative prompting system prevents information redundancy, ensuring players receive diverse, curated insights that build comprehensive understanding. This addresses information overload by presenting unique knowledge through an intuitive tree metaphor, making learning both engaging and efficient.
-
 ## License
 
 Created for Perplexity Hackathon. Original Prune game owned by Joel McDonald.
