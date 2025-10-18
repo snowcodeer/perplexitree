@@ -22,7 +22,7 @@ class Renderer {
         this.renderFlowers();
         this.renderLightSource();
         
-        if ((this.game.currentTool === 'growth' || this.game.currentTool === 'leaves' || this.game.currentTool === 'fruit' || this.game.currentTool === 'flower' || this.game.currentTool === 'reposition' || this.game.currentTool === 'study') && this.game.hoveredNode) {
+        if ((this.game.currentTool === 'growth' || this.game.currentTool === 'leaves' || this.game.currentTool === 'fruit' || this.game.currentTool === 'flower' || this.game.currentTool === 'reposition' || this.game.currentTool === 'study' || this.game.currentTool === 'pan') && this.game.hoveredNode) {
             this.renderHoveredNode();
         }
         
@@ -36,21 +36,21 @@ class Renderer {
             this.renderTooltip(this.game.hoveredNode.searchResult, this.game.hoveredNode.x, this.game.hoveredNode.y);
         }
         
-        // Render cut tool visual (inside camera transform, like it was before)
+        this.ctx.restore();
+        
+        // Render cut tool visual (outside camera transform, in screen coordinates)
         if (this.game.currentTool === 'cut' && this.game.isDragging && this.game.dragStart && this.game.dragEnd) {
             console.log('RENDERING CUT TOOL VISUAL:', this.game.dragStart, this.game.dragEnd);
             this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
             this.ctx.lineWidth = 3;
             this.ctx.setLineDash([5, 5]);
             this.ctx.beginPath();
-            // Convert screen coordinates to world coordinates by subtracting camera offset
-            this.ctx.moveTo(this.game.dragStart.x - this.game.cameraOffset.x, this.game.dragStart.y - this.game.cameraOffset.y);
-            this.ctx.lineTo(this.game.dragEnd.x - this.game.cameraOffset.x, this.game.dragEnd.y - this.game.cameraOffset.y);
+            // Use screen coordinates directly (no camera offset needed)
+            this.ctx.moveTo(this.game.dragStart.x, this.game.dragStart.y);
+            this.ctx.lineTo(this.game.dragEnd.x, this.game.dragEnd.y);
             this.ctx.stroke();
             this.ctx.setLineDash([]);
         }
-        
-        this.ctx.restore();
         
         this.renderUI();
     }
