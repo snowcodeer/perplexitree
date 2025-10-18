@@ -405,7 +405,7 @@ class UltraSimplePrune {
         
         for (let i = 0; i < branchCount; i++) {
             const angle = startAngle + (angleSpread / (branchCount - 1)) * i;
-            const length = 80 + Math.random() * 40; // 80-120 pixels (longer and more varied)
+            const length = 120 + Math.random() * 60; // 120-180 pixels (even longer and more varied)
             
             // Adjust angle to grow upward (subtract π/2 to rotate 90 degrees counterclockwise)
             const upwardAngle = angle - Math.PI / 2;
@@ -738,8 +738,8 @@ class UltraSimplePrune {
         this.welcomeSequence.isActive = true;
         this.welcomeSequence.hasShownPrompt = false;
         this.welcomeSequence.originalPanY = this.cameraOffset.y;
-        // Pan up so dirt covers about 40% of screen (show more dirt below)
-        this.welcomeSequence.targetPanY = -this.height * 0.4;
+        // Pan up higher so dirt covers about 60% of screen (show more dirt below)
+        this.welcomeSequence.targetPanY = -this.height * 0.6;
         
         // Start panning up
         this.animateWelcomePan();
@@ -774,15 +774,16 @@ class UltraSimplePrune {
         promptBox.innerHTML = `
             <div class="welcome-prompt-content">
                 <h2>Welcome to the root of your knowledge</h2>
-                <p>What would you like to learn?</p>
                 <div class="welcome-prompt-input">
-                    <input type="text" id="welcomeInput" placeholder="Type your question here..." autofocus>
+                    <input type="text" id="welcomeInput" placeholder="What would you like to learn?" autofocus>
                     <button id="welcomeSubmit">Enter</button>
                 </div>
             </div>
         `;
         
-        document.body.appendChild(promptBox);
+        // Append to canvas container for proper positioning
+        const canvasContainer = this.canvas.parentElement;
+        canvasContainer.appendChild(promptBox);
         
         // Focus input and handle events
         const input = document.getElementById('welcomeInput');
@@ -834,7 +835,9 @@ class UltraSimplePrune {
     }
     
     triggerFirstGrowth() {
-        // Just update status, no automatic growth
+        // Trigger growth from the trunk (first node) - same as clicking the first node
+        const trunkNode = { x: this.tree.x, y: this.tree.y - this.tree.trunkHeight };
+        this.growBranchesFromNode(trunkNode);
         this.updateStatus('Game ready! Use growth tool to grow branches, cut tool to prune them.');
     }
     
