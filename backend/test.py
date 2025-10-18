@@ -7,15 +7,10 @@ load_dotenv()
 client = Perplexity() # Uses PERPLEXITY_API_KEY from .env file
 
 search = client.search.create(
-    query=[
-        "latest AI developments 2024",
-        "solar power innovations",
-        "wind energy developments"
-    ]
+    query="plant biology topics",
+    max_results=5,
+    max_tokens_per_page=1024
 )
 
-# Results are combined and ranked
-for i, result in enumerate(search.results):
-    print(f"{i + 1}. {result.title}")
-    print(f"   URL: {result.url}")
-    print(f"   Date: {result.date}\n")
+for result in search.results:
+    print(f"{result.title}: {result.url}")

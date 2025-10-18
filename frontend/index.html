@@ -28,9 +28,26 @@
         <button id="fruitTool" class="tool-btn" title="bear fruit of labour - click on flowers to transform them into apples"><i class="fas fa-apple-alt"></i></button>
         <button id="flowerTool" class="tool-btn" title="blossom your knowledge - click on branch ends to add flowers"><i class="fas fa-seedling"></i></button>
         <button id="repositionTool" class="tool-btn" title="reposition tool - drag branch ends to move and resize"><i class="fas fa-edit"></i></button>
+        <button id="studyTool" class="tool-btn" title="study tool - hover to see search results"><i class="fas fa-search"></i></button>
     </div>
 
     <div class="status" id="status">Game ready!</div>
+    
+    <!-- Modal for study tool results -->
+    <div id="studyModal" class="study-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modalTitle">Topic Information</h3>
+                <div class="modal-controls">
+                    <button id="expandModal" class="modal-btn" title="expand">⛶</button>
+                    <button id="closeModal" class="modal-btn" title="close">×</button>
+                </div>
+            </div>
+            <div class="modal-body">
+                <p id="modalDescription"></p>
+            </div>
+        </div>
+    </div>
     
     <!-- Game Scripts -->
     <script src="/static/js/game.js"></script>

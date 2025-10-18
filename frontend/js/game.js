@@ -42,6 +42,10 @@ class UltraSimplePrune {
             animationSpeed: 2
         };
         
+        // Search results storage
+        this.searchResults = [];
+        this.originalSearchQuery = null;
+        
         this.init();
     }
     
@@ -64,12 +68,17 @@ class UltraSimplePrune {
         this.width = window.innerWidth;
         this.height = window.innerHeight - headerHeight;
         
+        // Store initial height for fixed ground positioning
+        if (!this.initialHeight) {
+            this.initialHeight = this.height;
+        }
+        
         this.canvas.width = this.width;
         this.canvas.height = this.height;
         
         if (this.tree) {
             this.tree.x = this.width / 2;
-            this.tree.y = this.height - 40;
+            this.tree.y = this.initialHeight - 40;
         }
         
         if (this.lightSource) {
@@ -81,7 +90,7 @@ class UltraSimplePrune {
     setupGameObjects() {
         this.tree = {
             x: this.width / 2,
-            y: this.height - 40,
+            y: this.initialHeight - 40,
             trunkHeight: 80,
             branches: [],
             leaves: [],
@@ -125,6 +134,10 @@ class UltraSimplePrune {
             this.setTool('pan');
         });
         
+        document.getElementById('studyTool').addEventListener('click', () => {
+            this.setTool('study');
+        });
+        
         document.getElementById('restartBtn').addEventListener('click', () => {
             this.restartGame();
         });
@@ -165,6 +178,9 @@ class UltraSimplePrune {
         } else if (tool === 'pan') {
             document.getElementById('panTool').classList.add('active');
             this.canvas.style.cursor = 'grab';
+        } else if (tool === 'study') {
+            document.getElementById('studyTool').classList.add('active');
+            this.canvas.style.cursor = 'pointer';
         }
         
         console.log('Tool set to:', tool);
@@ -223,6 +239,10 @@ class UltraSimplePrune {
         } else if (this.currentTool === 'cut') {
             this.isDragging = true;
             this.dragStart = { ...this.mousePos };
+        } else if (this.currentTool === 'study') {
+            if (this.hoveredNode && this.hoveredNode.searchResult) {
+                this.showStudyModal(this.hoveredNode.searchResult);
+            }
         }
         
         console.log('Mouse down at:', this.mousePos);
@@ -242,14 +262,14 @@ class UltraSimplePrune {
             this.cameraOffset.x += deltaX;
             this.cameraOffset.y += deltaY;
             
-            // Prevent panning below ground level (ground is at height - 40)
-            const maxPanUp = this.height - 40; // Can't pan up more than ground level
+            // Prevent panning below ground level (ground is at initialHeight - 40)
+            const maxPanUp = this.initialHeight - 40; // Can't pan up more than ground level
             if (this.cameraOffset.y > maxPanUp) {
                 this.cameraOffset.y = maxPanUp;
             }
             
             this.panStart = { ...this.mousePos };
-        } else if (this.currentTool === 'growth' || this.currentTool === 'leaves' || this.currentTool === 'fruit' || this.currentTool === 'flower' || this.currentTool === 'reposition') {
+        } else if (this.currentTool === 'growth' || this.currentTool === 'leaves' || this.currentTool === 'fruit' || this.currentTool === 'flower' || this.currentTool === 'reposition' || this.currentTool === 'study') {
             this.hoveredNode = this.getNodeAtPosition(this.mousePos);
         } else if (this.currentTool === 'cut' && this.isDragging) {
             this.dragEnd = { ...this.mousePos };
@@ -340,6 +360,18 @@ class UltraSimplePrune {
         const trunkPoint = { x: this.tree.x, y: this.tree.y - this.tree.trunkHeight };
         
         if (Math.abs(adjustedPos.x - trunkPoint.x) < 8 && Math.abs(adjustedPos.y - trunkPoint.y) < 8) {
+            // For study tool, return the trunk with original search query
+            if (this.currentTool === 'study' && this.originalSearchQuery) {
+                return { 
+                    x: trunkPoint.x, 
+                    y: trunkPoint.y, 
+                    searchResult: {
+                        title: this.originalSearchQuery,
+                        snippet: `Your original search topic: ${this.originalSearchQuery}`,
+                        llm_content: `This is your main topic: ${this.originalSearchQuery}. The branches below represent the 5 primary areas within this field.`
+                    }
+                };
+            }
             return trunkPoint;
         }
         
@@ -355,6 +387,11 @@ class UltraSimplePrune {
         for (let branch of this.tree.branches) {
             if (branch.length >= branch.maxLength) {
                 if (Math.abs(adjustedPos.x - branch.end.x) < 8 && Math.abs(adjustedPos.y - branch.end.y) < 8) {
+                    // For study tool, return the branch object so we can access searchResult
+                    if (this.currentTool === 'study' && branch.searchResult) {
+                        console.log('Study tool found branch with search result:', branch.searchResult);
+                        return { x: branch.end.x, y: branch.end.y, searchResult: branch.searchResult };
+                    }
                     return { x: branch.end.x, y: branch.end.y };
                 }
             }
@@ -427,6 +464,22 @@ class UltraSimplePrune {
             this.tree.branches.push(branch);
         }
         
+        // Assign search results to the 5 initial branches
+        console.log('Assigning search results to branches. Search results:', this.searchResults);
+        console.log('Available branches:', this.tree.branches.length);
+        if (this.searchResults && this.searchResults.length > 0) {
+            const lastFiveBranches = this.tree.branches.slice(-5);
+            console.log('Last 5 branches:', lastFiveBranches);
+            lastFiveBranches.forEach((branch, index) => {
+                if (this.searchResults[index]) {
+                    branch.searchResult = this.searchResults[index];
+                    console.log(`Assigned search result ${index} to branch:`, branch.searchResult);
+                }
+            });
+        } else {
+            console.log('No search results available to assign');
+        }
+        
         this.updateStatus(`Grew ${branchCount} branches from trunk!`);
     }
     
@@ -478,7 +531,9 @@ class UltraSimplePrune {
         
         if (parentBranch) {
             const parentThickness = parentBranch.thickness || 5;
-            const newThickness = Math.max(3, parentThickness - 1);
+            // More aggressive thinning: reduce by 2-3 instead of 1, with minimum of 1
+            const reduction = parentThickness > 6 ? 3 : 2;
+            const newThickness = Math.max(1, parentThickness - reduction);
             return newThickness;
         }
         
@@ -789,8 +844,9 @@ class UltraSimplePrune {
         const input = document.getElementById('welcomeInput');
         const submitBtn = document.getElementById('welcomeSubmit');
         
-        const handleSubmit = () => {
-            this.dismissWelcomePrompt();
+        const handleSubmit = async () => {
+            const userInput = input.value.trim();
+            await this.dismissWelcomePrompt(userInput);
         };
         
         input.addEventListener('keypress', (e) => {
@@ -805,16 +861,49 @@ class UltraSimplePrune {
         setTimeout(() => input.focus(), 100);
     }
     
-    dismissWelcomePrompt() {
+    async dismissWelcomePrompt(userInput) {
         // Remove prompt box
         const promptBox = document.getElementById('welcomePrompt');
         if (promptBox) {
             promptBox.remove();
         }
         
-        // Pan back up to original position
+        // Pan back up to original position immediately
         this.welcomeSequence.targetPanY = this.welcomeSequence.originalPanY;
         this.animateWelcomePanBack();
+        
+        // Call API with user input and wait for results, then grow
+        if (userInput) {
+            await this.fetchSearchResults(userInput);
+        }
+    }
+    
+    async fetchSearchResults(userInput) {
+        console.log('Fetching search results for:', userInput);
+        this.originalSearchQuery = userInput; // Store the original search query
+        try {
+            const response = await fetch('http://localhost:8001/api/search', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query: userInput })
+            });
+            
+            console.log('API response status:', response.status);
+            const data = await response.json();
+            console.log('API response data:', data);
+            
+            if (data.results) {
+                this.searchResults = data.results;
+                console.log('Search results stored:', this.searchResults);
+                this.updateStatus(`Found ${data.results.length} topics! Use study tool to explore.`);
+                
+                // Now trigger the first growth with search results
+                this.triggerFirstGrowth();
+            }
+        } catch (error) {
+            console.error('Search error:', error);
+            this.updateStatus('Search failed. Please try again.');
+        }
     }
     
     animateWelcomePanBack() {
@@ -827,18 +916,19 @@ class UltraSimplePrune {
             this.cameraOffset.y += diff * 0.05; // Smooth animation
             requestAnimationFrame(() => this.animateWelcomePanBack());
         } else {
-            // Reached original position, trigger first growth
+            // Reached original position, mark sequence as complete
             this.cameraOffset.y = targetY;
             this.welcomeSequence.isActive = false;
-            this.triggerFirstGrowth();
+            // Don't trigger growth here - wait for search results
         }
     }
     
     triggerFirstGrowth() {
         // Trigger growth from the trunk (first node) - same as clicking the first node
         const trunkNode = { x: this.tree.x, y: this.tree.y - this.tree.trunkHeight };
+        console.log('Triggering first growth, search results:', this.searchResults);
         this.growBranchesFromNode(trunkNode);
-        this.updateStatus('Game ready! Use growth tool to grow branches, cut tool to prune them.');
+        this.updateStatus('Tree ready! Use growth tool to grow branches, cut tool to prune them.');
     }
     
     restartGame() {
@@ -849,5 +939,38 @@ class UltraSimplePrune {
         this.tree.flowers = [];
         this.gameState = 'playing';
         this.updateStatus('Game restarted! Use growth tool to grow branches.');
+    }
+    
+    showStudyModal(searchResult) {
+        const modal = document.getElementById('studyModal');
+        const title = document.getElementById('modalTitle');
+        const description = document.getElementById('modalDescription');
+        
+        if (modal && title && description) {
+            title.textContent = this.toProperCase(searchResult.title);
+            const content = searchResult.snippet || searchResult.llm_content || 'No description available';
+            description.textContent = this.toProperCase(content);
+            modal.classList.add('show');
+        }
+    }
+    
+    toProperCase(str) {
+        return str.replace(/\w\S*/g, (txt) => {
+            return txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase();
+        });
+    }
+    
+    hideStudyModal() {
+        const modal = document.getElementById('studyModal');
+        if (modal) {
+            modal.classList.remove('show');
+        }
+    }
+    
+    toggleModalExpansion() {
+        const modalContent = document.querySelector('.modal-content');
+        if (modalContent) {
+            modalContent.classList.toggle('expanded');
+        }
     }
 }

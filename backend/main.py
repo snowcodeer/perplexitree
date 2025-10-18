@@ -1,77 +1,110 @@
-import os
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.responses import FileResponse
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import List, Dict, Any
-import json
-from dotenv import load_dotenv
 from perplexity import Perplexity
+from dotenv import load_dotenv
+import os
+import json
 
 load_dotenv()
+app = FastAPI()
 
-app = FastAPI(title="Perplexitree API", description="A tree growth game with Perplexity AI integration")
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allows all origins
+    allow_credentials=True,
+    allow_methods=["*"],  # Allows all methods
+    allow_headers=["*"],  # Allows all headers
+)
 
-# Mount static files
+# Mount frontend
 frontend_path = os.path.join(os.path.dirname(__file__), "..", "frontend")
 app.mount("/static", StaticFiles(directory=frontend_path), name="static")
 
-@app.get("/", response_class=HTMLResponse)
+@app.get("/")
 async def serve_game():
-    """Serve the main game page"""
-    frontend_path = os.path.join(os.path.dirname(__file__), "..", "frontend", "index.html")
-    return FileResponse(frontend_path)
+    return FileResponse(os.path.join(os.path.dirname(__file__), "..", "frontend", "index.html"))
 
-class QueryRequest(BaseModel):
+class SearchRequest(BaseModel):
     query: str
 
-@app.post("/api/query")
-async def query_perplexity(request: QueryRequest):
-    """Test endpoint to query Perplexity with any question"""
+@app.post("/api/search")
+async def search(request: SearchRequest):
     try:
         client = Perplexity()
-        search = client.search.create(
-            query=request.query,
-            max_results=5
+        
+        # Define the JSON schema for structured output
+        schema = {
+            "type": "object",
+            "properties": {
+                "areas": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "name": {"type": "string"},
+                            "description": {"type": "string"},
+                            "search_query": {"type": "string"}
+                        },
+                        "required": ["name", "description", "search_query"]
+                    },
+                    "minItems": 5,
+                    "maxItems": 5
+                }
+            },
+            "required": ["areas"]
+        }
+        
+        # Use structured outputs to get exactly 5 areas with descriptions
+        completion = client.chat.completions.create(
+            model="sonar-pro",
+            messages=[
+                {"role": "user", "content": f"What are the primary 5 areas in {request.query}? Please provide exactly 5 distinct areas, each with a brief description and a relevant search query for further research. Return the data as a JSON object with the following structure: areas array with 5 objects, each containing name, description, and search_query fields."}
+            ],
+            response_format={
+                "type": "json_schema",
+                "json_schema": {"schema": schema}
+            }
         )
         
-        results = []
-        for result in search.results:
-            results.append({
-                "title": result.title,
-                "content": result.content,
-                "url": result.url
-            })
+        # Parse the structured JSON response
+        response_content = completion.choices[0].message.content
+        try:
+            structured_data = json.loads(response_content)
+        except json.JSONDecodeError as e:
+            # Fallback to generic results
+            structured_data = None
         
-        return {"query": request.query, "results": results}
+        # Create results from structured data
+        results = []
+        if structured_data and "areas" in structured_data:
+            for i, area in enumerate(structured_data["areas"]):
+                results.append({
+                    "id": i,
+                    "title": area["name"],
+                    "url": f"https://example.com/{request.query.replace(' ', '-')}-{area['name'].lower().replace(' ', '-').replace('(', '').replace(')', '')}",
+                    "date": "2024-01-01",
+                    "snippet": area["description"],
+                    "llm_content": f"**{area['name']}**\n\n{area['description']}"
+                })
+        else:
+            # Fallback to generic results
+            for i in range(5):
+                results.append({
+                    "id": i,
+                    "title": f"{request.query} - Area {i+1}",
+                    "url": f"https://example.com/{request.query.replace(' ', '-')}-area-{i+1}",
+                    "date": "2024-01-01",
+                    "snippet": f"Primary area {i+1} in {request.query}",
+                    "llm_content": response_content
+                })
+        
+        return {"query": request.query, "results": results, "structured_data": structured_data}
     except Exception as e:
         return {"error": str(e), "query": request.query}
-
-@app.get("/api/test-plant-biology")
-async def test_plant_biology():
-    """Test endpoint with plant biology queries"""
-    try:
-        client = Perplexity()
-        search = client.search.create(
-            query=[
-                "plant reproductive system",
-                "seed dispersion"
-            ]
-        )
-        
-        results = []
-        for i, result in enumerate(search.results):
-            results.append({
-                "rank": i + 1,
-                "title": result.title,
-                "url": result.url,
-                "date": result.date,
-                "content": result.content
-            })
-        
-        return {"queries": ["plant reproductive system", "seed dispersion"], "results": results}
-    except Exception as e:
-        return {"error": str(e), "queries": ["plant reproductive system", "seed dispersion"]}
 
 if __name__ == "__main__":
     import uvicorn

@@ -22,8 +22,13 @@ class Renderer {
         this.renderFlowers();
         this.renderLightSource();
         
-        if ((this.game.currentTool === 'growth' || this.game.currentTool === 'leaves' || this.game.currentTool === 'fruit' || this.game.currentTool === 'flower' || this.game.currentTool === 'reposition') && this.game.hoveredNode) {
+        if ((this.game.currentTool === 'growth' || this.game.currentTool === 'leaves' || this.game.currentTool === 'fruit' || this.game.currentTool === 'flower' || this.game.currentTool === 'reposition' || this.game.currentTool === 'study') && this.game.hoveredNode) {
             this.renderHoveredNode();
+        }
+        
+        // Render tooltip for study tool
+        if (this.game.currentTool === 'study' && this.game.hoveredNode && this.game.hoveredNode.searchResult) {
+            this.renderTooltip(this.game.hoveredNode.searchResult, this.game.hoveredNode.x, this.game.hoveredNode.y);
         }
         
         if (this.game.currentTool === 'cut' && this.game.isDragging && this.game.dragStart && this.game.dragEnd) {
@@ -44,7 +49,8 @@ class Renderer {
     
     renderGround() {
         const groundHeight = 40;
-        const groundY = this.game.height - groundHeight;
+        // Use a fixed ground position that doesn't change with canvas resize
+        const groundY = this.game.initialHeight - groundHeight;
         
         this.ctx.fillStyle = '#000000';
         
@@ -59,15 +65,16 @@ class Renderer {
         }
         
         // Extend the ground way down and to the sides to fill the entire area
-        this.ctx.lineTo(this.game.width + 1000, this.game.height + 1000); // Bottom right
-        this.ctx.lineTo(-1000, this.game.height + 1000); // Bottom left
+        // Use a large fixed height to ensure it always covers the bottom
+        this.ctx.lineTo(this.game.width + 1000, groundY + 1000); // Bottom right
+        this.ctx.lineTo(-1000, groundY + 1000); // Bottom left
         this.ctx.closePath();
         this.ctx.fill();
     }
     
     renderTrunk() {
         this.ctx.strokeStyle = '#000000';
-        this.ctx.lineWidth = 20;
+        this.ctx.lineWidth = 35;
         this.ctx.lineCap = 'square';
         this.ctx.lineJoin = 'miter';
         
@@ -228,6 +235,100 @@ class Renderer {
         this.ctx.fill();
     }
     
+    renderTooltip(searchResult, x, y) {
+        const tooltipWidth = 300;
+        const tooltipHeight = 120;
+        const padding = 15;
+        const borderRadius = 8;
+        
+        // Position tooltip to avoid going off screen
+        let tooltipX = x + 15;
+        let tooltipY = y - tooltipHeight - 15;
+        
+        // Adjust if tooltip would go off screen
+        if (tooltipX + tooltipWidth > this.game.width) {
+            tooltipX = x - tooltipWidth - 15;
+        }
+        if (tooltipY < 0) {
+            tooltipY = y + 15;
+        }
+        
+        // Draw tooltip background with rounded corners
+        this.ctx.fillStyle = '#1a1a1a';
+        this.ctx.strokeStyle = '#333';
+        this.ctx.lineWidth = 1;
+        
+        // Draw rounded rectangle
+        this.ctx.beginPath();
+        this.ctx.roundRect(tooltipX, tooltipY, tooltipWidth, tooltipHeight, borderRadius);
+        this.ctx.fill();
+        this.ctx.stroke();
+        
+        // Draw header background
+        this.ctx.fillStyle = '#222';
+        this.ctx.beginPath();
+        this.ctx.roundRect(tooltipX, tooltipY, tooltipWidth, 40, [borderRadius, borderRadius, 0, 0]);
+        this.ctx.fill();
+        
+        // Draw header border
+        this.ctx.strokeStyle = '#333';
+        this.ctx.beginPath();
+        this.ctx.moveTo(tooltipX, tooltipY + 40);
+        this.ctx.lineTo(tooltipX + tooltipWidth, tooltipY + 40);
+        this.ctx.stroke();
+        
+        // Draw title (proper case)
+        this.ctx.fillStyle = '#ffffff';
+        this.ctx.font = 'bold 14px "JetBrains Mono", monospace';
+        const title = this.toProperCase(searchResult.title);
+        this.ctx.fillText(title, tooltipX + padding, tooltipY + 25);
+        
+        // Draw description (proper case)
+        this.ctx.fillStyle = '#ccc';
+        this.ctx.font = '12px "JetBrains Mono", monospace';
+        const description = this.toProperCase(searchResult.snippet || searchResult.llm_content || 'No description available');
+        
+        // Wrap text to fit in tooltip
+        const maxWidth = tooltipWidth - (padding * 2);
+        const lines = this.wrapText(description, maxWidth);
+        let lineY = tooltipY + 60;
+        
+        lines.slice(0, 3).forEach(line => { // Show max 3 lines
+            this.ctx.fillText(line, tooltipX + padding, lineY);
+            lineY += 15;
+        });
+        
+        // Draw click instruction
+        this.ctx.fillStyle = '#3b82f6';
+        this.ctx.font = '11px "JetBrains Mono", monospace';
+        this.ctx.fillText('Click to expand', tooltipX + padding, tooltipY + tooltipHeight - 8);
+    }
+    
+    toProperCase(str) {
+        return str.replace(/\w\S*/g, (txt) => {
+            return txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase();
+        });
+    }
+    
+    wrapText(text, maxWidth) {
+        const words = text.split(' ');
+        const lines = [];
+        let currentLine = words[0];
+        
+        for (let i = 1; i < words.length; i++) {
+            const word = words[i];
+            const width = this.ctx.measureText(currentLine + ' ' + word).width;
+            if (width < maxWidth) {
+                currentLine += ' ' + word;
+            } else {
+                lines.push(currentLine);
+                currentLine = word;
+            }
+        }
+        lines.push(currentLine);
+        return lines;
+    }
+    
     renderUI() {
         // Keep text color consistent - it's rendered over the black soil
         this.ctx.fillStyle = '#ecf0f1'; // Light text that shows well over dark soil
@@ -249,6 +350,8 @@ class Renderer {
             this.ctx.fillText('blossom your knowledge: hover over branch ends and click to add flowers', textX, textY);
         } else if (this.game.currentTool === 'reposition') {
             this.ctx.fillText('reposition tool: drag branch ends to move and resize them', textX, textY);
+        } else if (this.game.currentTool === 'study') {
+            this.ctx.fillText('study tool: hover over nodes to see search results', textX, textY);
         } else {
             this.ctx.fillText('cut tool: click and drag to prune branches', textX, textY);
         }
