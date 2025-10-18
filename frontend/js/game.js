@@ -2085,35 +2085,46 @@ class UltraSimplePrune {
                         maxLength: branchData.maxLength,
                         angle: branchData.angle,
                         thickness: branchData.thickness,
-                        generation: branchData.generation || 0, // Ensure generation is set
+                        generation: branchData.generation,
                         isGrowing: branchData.isGrowing,
                         growthSpeed: branchData.growthSpeed,
-                        searchResult: branchData.searchResult,
-                        id: branchData.id, // Preserve branch ID for reference
-                        parent: null // Will be set below after all branches are loaded
+                        searchResult: branchData.searchResult
                     };
                     this.tree.branches.push(branch);
                 });
                 
-                // Restore parent relationships after all branches are loaded
-                console.log('Restoring parent relationships...');
-                gameState.branches.forEach((branchData, index) => {
-                    console.log(`Branch ${index}:`, branchData.searchResult?.title, 'parentId:', branchData.parentId);
-                    if (branchData.parentId) {
-                        const parentBranch = this.tree.branches.find(b => b.id === branchData.parentId);
-                        if (parentBranch) {
-                            this.tree.branches[index].parent = parentBranch;
-                            console.log(`  -> Found parent:`, parentBranch.searchResult?.title);
-                        } else {
-                            console.log(`  -> Parent not found for ID:`, branchData.parentId);
-                        }
-                    } else {
-                        console.log(`  -> No parent ID`);
-                    }
-                });
-                
-                // Reposition all tree assets to match current tree position
-                this.repositionTreeAssets();
+                // Simple offset: move everything by the same amount the trunk moved
+                const firstGenBranch = this.tree.branches.find(b => b.generation === 1);
+                if (firstGenBranch) {
+                    const trunkOffsetX = this.tree.x - firstGenBranch.start.x;
+                    const trunkOffsetY = (this.tree.y - this.tree.trunkHeight) - firstGenBranch.start.y;
+                    
+                    // Apply the same offset to ALL branches
+                    this.tree.branches.forEach(branch => {
+                        branch.start.x += trunkOffsetX;
+                        branch.start.y += trunkOffsetY;
+                        branch.end.x += trunkOffsetX;
+                        branch.end.y += trunkOffsetY;
+                    });
+                    
+                    // Apply the same offset to ALL leaves
+                    this.tree.leaves.forEach(leaf => {
+                        leaf.x += trunkOffsetX;
+                        leaf.y += trunkOffsetY;
+                    });
+                    
+                    // Apply the same offset to ALL flowers
+                    this.tree.flowers.forEach(flower => {
+                        flower.x += trunkOffsetX;
+                        flower.y += trunkOffsetY;
+                    });
+                    
+                    // Apply the same offset to ALL fruits
+                    this.tree.fruits.forEach(fruit => {
+                        fruit.x += trunkOffsetX;
+                        fruit.y += trunkOffsetY;
+                    });
+                }
                 
                 // Restore leaves with proper branch references
                 console.log('Loading leaves:', gameState.leaves);
