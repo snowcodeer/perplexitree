@@ -2093,7 +2093,7 @@ class UltraSimplePrune {
                     this.tree.branches.push(branch);
                 });
                 
-                // Apply offset to branches first
+                // Simple offset: move everything by the same amount the trunk moved
                 const firstGenBranch = this.tree.branches.find(b => b.generation === 1);
                 if (firstGenBranch) {
                     const trunkOffsetX = this.tree.x - firstGenBranch.start.x;
@@ -2108,78 +2108,74 @@ class UltraSimplePrune {
                     });
                 }
                 
-                // Restore leaves by generating them at their branch positions
+                // Restore leaves with proper branch references
                 console.log('Loading leaves:', gameState.leaves);
                 gameState.leaves.forEach(leafData => {
-                    // Find the branch this leaf belongs to
-                    let branch = null;
+                    const leaf = {
+                        x: leafData.x,
+                        y: leafData.y,
+                        size: leafData.size,
+                        branchId: leafData.branchId,
+                        sway: Math.random() * Math.PI * 2, // Add sway for animation
+                        angle: Math.random() * Math.PI * 2, // Add angle for rotation
+                        branch: null // Will be set below
+                    };
+                    
+                    // Try to find the branch this leaf belongs to
                     if (leafData.branchId) {
                         // Find branch by ID (if we have branch IDs)
-                        branch = this.tree.branches.find(b => b.id === leafData.branchId);
+                        const branch = this.tree.branches.find(b => b.id === leafData.branchId);
+                        if (branch) {
+                            leaf.branch = branch;
+                        }
                     } else {
                         // Find branch by position (fallback)
-                        branch = this.tree.branches.find(b => 
-                            Math.abs(b.end.x - leafData.x) < 20 && 
-                            Math.abs(b.end.y - leafData.y) < 20
+                        const branch = this.tree.branches.find(branch => 
+                            Math.abs(branch.end.x - leafData.x) < 20 && 
+                            Math.abs(branch.end.y - leafData.y) < 20
                         );
+                        if (branch) {
+                            leaf.branch = branch;
+                        }
                     }
                     
-                    if (branch) {
-                        // Generate leaf at the branch's current position
-                        const leaf = {
-                            x: branch.end.x,
-                            y: branch.end.y,
-                            size: leafData.size,
-                            branchId: branch.id,
-                            sway: Math.random() * Math.PI * 2,
-                            angle: Math.random() * Math.PI * 2,
-                            branch: branch
-                        };
-                        this.tree.leaves.push(leaf);
-                    }
+                    this.tree.leaves.push(leaf);
                 });
                 console.log('Total leaves after loading:', this.tree.leaves.length);
                 
-                // Restore fruits by generating them at their branch positions
+                // Restore fruits
                 gameState.fruits.forEach(fruitData => {
-                    // Find the branch this fruit belongs to
-                    const branch = this.tree.branches.find(b => 
-                        Math.abs(b.end.x - fruitData.x) < 20 && 
-                        Math.abs(b.end.y - fruitData.y) < 20
-                    );
-                    
-                    if (branch) {
-                        // Generate fruit at the branch's current position
-                        const fruit = {
-                            x: branch.end.x,
-                            y: branch.end.y,
-                            type: fruitData.type,
-                            size: fruitData.size
-                        };
-                        this.tree.fruits.push(fruit);
-                    }
+                    const fruit = {
+                        x: fruitData.x,
+                        y: fruitData.y,
+                        type: fruitData.type,
+                        size: fruitData.size
+                    };
+                    this.tree.fruits.push(fruit);
                 });
                 
-                // Restore flowers by generating them at their branch positions
+                // Restore flowers
                 gameState.flowers.forEach(flowerData => {
-                    // Find the branch this flower belongs to
-                    const branch = this.tree.branches.find(b => 
-                        Math.abs(b.end.x - flowerData.x) < 10 && 
-                        Math.abs(b.end.y - flowerData.y) < 10
+                    const flower = {
+                        x: flowerData.x,
+                        y: flowerData.y,
+                        type: flowerData.type,
+                        size: flowerData.size,
+                        sway: Math.random() * Math.PI * 2, // Generate random sway for animation
+                        branch: null // Will be set below if we can find the matching branch
+                    };
+                    
+                    // Try to find the branch this flower belongs to
+                    const matchingBranch = this.tree.branches.find(branch => 
+                        Math.abs(branch.end.x - flowerData.x) < 10 && 
+                        Math.abs(branch.end.y - flowerData.y) < 10
                     );
                     
-                    if (branch) {
-                        // Generate flower at the branch's current position
-                        const flower = {
-                            x: branch.end.x,
-                            y: branch.end.y,
-                            type: flowerData.type,
-                            size: flowerData.size,
-                            sway: Math.random() * Math.PI * 2,
-                            branch: branch
-                        };
-                        this.tree.flowers.push(flower);
+                    if (matchingBranch) {
+                        flower.branch = matchingBranch;
                     }
+                    
+                    this.tree.flowers.push(flower);
                 });
                 
                 // Restore flashcards with proper node_position formatting and branch references
@@ -2227,6 +2223,29 @@ class UltraSimplePrune {
                 this.updateStatus(`Game state loaded! Query: ${this.originalSearchQuery}`);
                 console.log('Game state loaded successfully:', data);
                 
+                // Apply offset to leaves, flowers, and fruits after they're all loaded
+                if (firstGenBranch) {
+                    const trunkOffsetX = this.tree.x - firstGenBranch.start.x;
+                    const trunkOffsetY = (this.tree.y - this.tree.trunkHeight) - firstGenBranch.start.y;
+                    
+                    // Apply the same offset to ALL leaves
+                    this.tree.leaves.forEach(leaf => {
+                        leaf.x += trunkOffsetX;
+                        leaf.y += trunkOffsetY;
+                    });
+                    
+                    // Apply the same offset to ALL flowers
+                    this.tree.flowers.forEach(flower => {
+                        flower.x += trunkOffsetX;
+                        flower.y += trunkOffsetY;
+                    });
+                    
+                    // Apply the same offset to ALL fruits
+                    this.tree.fruits.forEach(fruit => {
+                        fruit.x += trunkOffsetX;
+                        fruit.y += trunkOffsetY;
+                    });
+                }
                 
                 // Update the flashcard deck display
                 this.updateFlashcardDeck();
