@@ -33,6 +33,15 @@ class UltraSimplePrune {
         this.lastTime = 0;
         this.branchCount = 0;
         
+        // Welcome sequence state
+        this.welcomeSequence = {
+            isActive: false,
+            hasShownPrompt: false,
+            targetPanY: 0,
+            originalPanY: 0,
+            animationSpeed: 2
+        };
+        
         this.init();
     }
     
@@ -132,7 +141,7 @@ class UltraSimplePrune {
     startGame() {
         console.log('Starting game...');
         this.gameState = 'playing';
-        this.updateStatus('Game started! Use growth tool to grow branches, cut tool to prune them.');
+        this.startWelcomeSequence();
     }
     
     setTool(tool) {
@@ -717,6 +726,112 @@ class UltraSimplePrune {
             body.classList.add('day-mode');
             this.updateStatus('Switched to day mode - sun is shining!');
         }
+    }
+    
+    startWelcomeSequence() {
+        this.welcomeSequence.isActive = true;
+        this.welcomeSequence.hasShownPrompt = false;
+        this.welcomeSequence.originalPanY = this.cameraOffset.y;
+        // Pan down so dirt covers about 40% of screen
+        this.welcomeSequence.targetPanY = this.height * 0.4;
+        
+        // Start panning down
+        this.animateWelcomePan();
+    }
+    
+    animateWelcomePan() {
+        if (!this.welcomeSequence.isActive) return;
+        
+        const currentY = this.cameraOffset.y;
+        const targetY = this.welcomeSequence.targetPanY;
+        const diff = targetY - currentY;
+        
+        if (Math.abs(diff) > 1) {
+            // Continue panning
+            this.cameraOffset.y += diff * 0.05; // Smooth animation
+            requestAnimationFrame(() => this.animateWelcomePan());
+        } else {
+            // Reached target, show prompt
+            this.cameraOffset.y = targetY;
+            this.showWelcomePrompt();
+        }
+    }
+    
+    showWelcomePrompt() {
+        if (this.welcomeSequence.hasShownPrompt) return;
+        
+        this.welcomeSequence.hasShownPrompt = true;
+        
+        // Create prompt box
+        const promptBox = document.createElement('div');
+        promptBox.id = 'welcomePrompt';
+        promptBox.innerHTML = `
+            <div class="welcome-prompt-content">
+                <h2>Welcome to the root of your knowledge</h2>
+                <p>What would you like to learn?</p>
+                <div class="welcome-prompt-input">
+                    <input type="text" id="welcomeInput" placeholder="Type your question here..." autofocus>
+                    <button id="welcomeSubmit">Enter</button>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(promptBox);
+        
+        // Focus input and handle events
+        const input = document.getElementById('welcomeInput');
+        const submitBtn = document.getElementById('welcomeSubmit');
+        
+        const handleSubmit = () => {
+            this.dismissWelcomePrompt();
+        };
+        
+        input.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                handleSubmit();
+            }
+        });
+        
+        submitBtn.addEventListener('click', handleSubmit);
+        
+        // Auto-focus
+        setTimeout(() => input.focus(), 100);
+    }
+    
+    dismissWelcomePrompt() {
+        // Remove prompt box
+        const promptBox = document.getElementById('welcomePrompt');
+        if (promptBox) {
+            promptBox.remove();
+        }
+        
+        // Pan back up to original position
+        this.welcomeSequence.targetPanY = this.welcomeSequence.originalPanY;
+        this.animateWelcomePanBack();
+    }
+    
+    animateWelcomePanBack() {
+        const currentY = this.cameraOffset.y;
+        const targetY = this.welcomeSequence.targetPanY;
+        const diff = targetY - currentY;
+        
+        if (Math.abs(diff) > 1) {
+            // Continue panning back up
+            this.cameraOffset.y += diff * 0.05; // Smooth animation
+            requestAnimationFrame(() => this.animateWelcomePanBack());
+        } else {
+            // Reached original position, trigger first growth
+            this.cameraOffset.y = targetY;
+            this.welcomeSequence.isActive = false;
+            this.triggerFirstGrowth();
+        }
+    }
+    
+    triggerFirstGrowth() {
+        // Trigger growth from the trunk (first node)
+        const trunkNode = { x: this.tree.x, y: this.tree.y };
+        this.growBranchesFromNode(trunkNode);
+        this.updateStatus('Game ready! Use growth tool to grow branches, cut tool to prune them.');
     }
     
     restartGame() {
