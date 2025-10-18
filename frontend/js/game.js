@@ -2067,10 +2067,11 @@ class UltraSimplePrune {
                         maxLength: branchData.maxLength,
                         angle: branchData.angle,
                         thickness: branchData.thickness,
-                        generation: branchData.generation,
+                        generation: branchData.generation || 0, // Ensure generation is set
                         isGrowing: branchData.isGrowing,
                         growthSpeed: branchData.growthSpeed,
-                        searchResult: branchData.searchResult
+                        searchResult: branchData.searchResult,
+                        id: branchData.id // Preserve branch ID for reference
                     };
                     this.tree.branches.push(branch);
                 });
@@ -2163,6 +2164,9 @@ class UltraSimplePrune {
                         const branch = this.tree.branches.find(b => b.id === flashcard.branch_id);
                         if (branch) {
                             restoredFlashcard.branch = branch;
+                            console.log(`Flashcard restored with branch (ID: ${flashcard.branch_id}, generation: ${branch.generation})`);
+                        } else {
+                            console.warn(`Branch not found for flashcard with branch_id: ${flashcard.branch_id}`);
                         }
                     } else if (restoredFlashcard.node_position) {
                         // Find branch by position (fallback)
@@ -2172,11 +2176,16 @@ class UltraSimplePrune {
                         );
                         if (branch) {
                             restoredFlashcard.branch = branch;
+                            console.log(`Flashcard restored with branch by position (generation: ${branch.generation})`);
+                        } else {
+                            console.warn(`Branch not found for flashcard at position:`, restoredFlashcard.node_position);
                         }
                     }
                     
                     return restoredFlashcard;
                 });
+                
+                console.log(`Restored ${this.flashcards.length} flashcards with branch references`);
                 
                 this.currentSessionId = sessionId;
                 this.updateStatus(`Game state loaded! Query: ${this.originalSearchQuery}`);
@@ -2318,6 +2327,14 @@ class UltraSimplePrune {
         if (promptBox) {
             promptBox.remove();
         }
+        
+        // Remove any existing flashcard deck UI elements
+        const flashcardDeckElements = document.querySelectorAll('.flashcard-deck, .flashcard-modal, [id*="flashcard"]');
+        flashcardDeckElements.forEach(element => {
+            if (element.id !== 'showFlashcardsBtn') { // Don't remove the button in study modal
+                element.remove();
+            }
+        });
         
         // Start the welcome sequence
         this.startWelcomeSequence();
