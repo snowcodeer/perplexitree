@@ -1285,9 +1285,11 @@ class UltraSimplePrune {
             console.log('Flashcard creation response:', data);
             
             if (data.success) {
-                // Add branch reference to each flashcard
+                // Add branch reference to each flashcard and fix casing
                 const flashcardsWithBranch = data.flashcards.map(flashcard => ({
                     ...flashcard,
+                    front: this.toProperCase(flashcard.front),
+                    back: this.toProperCase(flashcard.back),
                     branch: branch // Add branch reference for pruning
                 }));
                 

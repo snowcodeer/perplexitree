@@ -8,37 +8,41 @@ A beautiful, interactive web game that combines the meditative puzzle mechanics 
 
 **Technical Approach**: Built with a modular architecture featuring FastAPI backend and vanilla JavaScript frontend, the application integrates Perplexity's real-time search capabilities to generate unique knowledge areas for each growth session. The system ensures non-redundant information retrieval through intelligent query generation and structured output parsing.
 
-**Perplexity API Integration**: The game leverages Perplexity's reasoning and retrieval capabilities through multiple endpoints:
-- **Structured Search**: Uses Perplexity's `sonar-pro` model with JSON schema to generate 5 unique knowledge areas per search
-- **Web Search**: Implements real-time web search with result filtering and content summarization
-- **Flashcard Generation**: Creates study materials from search results using AI-powered content analysis
-- **Unique Results**: Each growth session generates fresh, non-redundant search queries to avoid information repetition
+**Perplexity API Integration**: The game leverages Perplexity's reasoning and retrieval capabilities through a two-phase approach:
+- **Initial Search**: Uses Perplexity's `sonar-pro` chat completion model with structured JSON output to generate 5 unique knowledge areas from the initial query
+- **Subsequent Growth**: Uses Perplexity's search model with negative prompting to find unique web results for each new branch
+- **Flashcard Generation**: Uses `sonar-pro` chat completion to create study materials from search results
+- **Unique Results**: Negative prompting system ensures each growth session returns fresh, non-redundant information
 
 The integration ensures players receive diverse, comprehensive information while maintaining the game's meditative, focused learning experience.
 
 ## Features
 
-- **Organic Tree Growth**: Watch your tree grow naturally with smooth, curved branches
-- **Interactive Pruning**: Click and drag to prune branches and direct growth
-- **Beautiful Visuals**: Minimalist black tree with smooth curves and organic movement
-- **Smart Branching**: Branches grow from existing branches with natural limits
-- **Clean Pruning**: Disconnected branches disappear completely when pruned
-- **AI-Powered Tips**: Get pruning advice using Perplexity AI integration
-- **Self-Contained**: Everything in one HTML file - no external dependencies
+- **AI-Powered Knowledge Tree**: Grow branches that represent real search results from Perplexity API
+- **Interactive Tools**: 7 different tools for managing your knowledge tree
+- **Unique Search Results**: Each growth session returns fresh, non-redundant information
+- **Study System**: Create flashcards from search results for enhanced learning
+- **Visual Progression**: Transform knowledge into flowers and fruits
+- **Game State Persistence**: Save and load your knowledge trees
 
 ## Game Mechanics
 
-### Core Gameplay
-1. **Tree Growth**: Your tree grows automatically with smooth, curved branches
-2. **Pruning**: Click and drag to cut branches that grow away from the light
-3. **Light Source**: Guide branches to reach the glowing orange light source
-4. **Victory**: When a branch touches the light, you win!
-5. **Natural Limits**: Each node can grow at most 6 branches for realistic growth
+### Tools Available
+1. **Growth Tool**: Click on nodes to grow new branches with search results
+2. **Cut Tool**: Click and drag to prune unwanted branches
+3. **Leaves Tool**: Create flashcards from search results on branches
+4. **Flower Tool**: Add flowers to branch ends (knowledge blossoming)
+5. **Fruit Tool**: Transform flowers into apples (fruit of labor)
+6. **Reposition Tool**: Drag branch ends to move and resize branches
+7. **Study Tool**: Hover over nodes to view search result details
+8. **Pan Tool**: Drag to move around the view
 
-### Controls
-- **Mouse/Touch**: Click and drag to prune branches
-- **Start Growing**: Click to begin the game
-- **Restart**: Click to restart and try again
+### Core Gameplay
+1. **Start**: Enter a search query to begin growing your knowledge tree
+2. **Grow**: Use the growth tool to expand branches with AI-powered search results
+3. **Prune**: Cut away branches that don't contribute to your learning goals
+4. **Study**: Create flashcards and study materials from your search results
+5. **Progress**: Watch your knowledge tree evolve with flowers and fruits
 
 ## Installation & Setup
 
@@ -71,92 +75,36 @@ python main.py
 
 5. Open your browser and go to: `http://localhost:8001`
 
-The game is completely self-contained in one HTML file with no external dependencies!
-
-## Game Levels
-
-### Level 1: First Growth
-- **Objective**: Guide your tree to a single light source
-- **Difficulty**: Beginner
-- **Obstacles**: None
-
-### Level 2: Dual Lights
-- **Objective**: Reach both light sources to bloom
-- **Difficulty**: Easy
-- **Obstacles**: None
-
-### Level 3: First Obstacles
-- **Objective**: Navigate around buzzsaws to reach the light
-- **Difficulty**: Medium
-- **Obstacles**: 2 Buzzsaws
-
-### Level 4: Complex Course
-- **Objective**: Avoid multiple obstacles including buzzsaws and orbs
-- **Difficulty**: Hard
-- **Obstacles**: 2 Buzzsaws, 1 Glowing Orb
-
-### Level 5: Master Level
-- **Objective**: Reach two light sources while avoiding a large buzzsaw
-- **Difficulty**: Expert
-- **Obstacles**: 1 Large Buzzsaw
+### Environment Variables
+Create a `.env` file in the `backend/` directory:
+```
+PERPLEXITY_API_KEY=your_perplexity_api_key_here
+```
 
 ## API Endpoints
 
-The backend provides several API endpoints:
-
-- `GET /` - Serve the main game
-- `GET /api/levels` - Get level configurations
+- `POST /api/search` - Generate knowledge areas for tree growth
+- `POST /api/web-search` - Search for specific topics with negative prompting
 - `POST /api/game/save` - Save game state
 - `GET /api/game/load/{session_id}` - Load game state
-- `GET /api/leaderboard` - Get high scores
-- `POST /api/leaderboard/submit` - Submit a score
-- `GET /api/ai-tips` - Get AI-generated pruning tips
-
-## Customization
-
-### Adding Sound Effects
-1. Place audio files in `frontend/sounds/`:
-   - `prune.mp3` - Pruning sound
-   - `bloom.mp3` - Blooming sound
-   - `ambient.mp3` - Background music
-
-### Creating New Levels
-Modify the `generateLevel()` method in `game.js` to add new levels with custom obstacles and light sources.
-
-### Styling
-Customize the game's appearance by modifying `styles.css`. The design uses CSS custom properties for easy theming.
+- `POST /api/flashcards/create` - Generate flashcards from search results
 
 ## Technical Details
 
-### Architecture
-- **Frontend**: Vanilla JavaScript with HTML5 Canvas
-- **Backend**: FastAPI with Python
-- **AI Integration**: Perplexity API for dynamic tips
-- **Styling**: Modern CSS with responsive design
+**Architecture**: FastAPI backend with vanilla JavaScript frontend, SQLite database, and Perplexity AI integration.
 
-### Performance
-- 60 FPS game loop using `requestAnimationFrame`
-- Efficient collision detection algorithms
-- Optimized canvas rendering
+**Key Technologies**: Python 3.8+, FastAPI, SQLAlchemy, Perplexity API, HTML5 Canvas, vanilla JavaScript.
 
-## Contributing
+**Performance**: 60 FPS rendering, efficient collision detection, optimized canvas operations.
 
-Feel free to contribute improvements:
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Submit a pull request
+### Written Summary 📝
 
-## Credits
+**PerplexTree** transforms learning into an engaging visual experience by combining puzzle mechanics with AI-powered knowledge exploration. Players cultivate knowledge trees through strategic pruning while leveraging Perplexity's real-time search capabilities.
 
-- **Original Game**: Prune by Joel McDonald
-- **Web Recreation**: Created for Perplexity Hackathon
-- **Inspiration**: The original Prune game's elegant design and meditative gameplay
+**Technical Approach**: Built with FastAPI backend and vanilla JavaScript frontend, the application uses a two-phase Perplexity integration: initial queries use the `sonar-pro` chat completion model for structured knowledge area generation, while subsequent growth uses the search model with negative prompting to ensure unique web results.
+
+**Impact**: The negative prompting system prevents information redundancy, ensuring players receive diverse, curated insights that build comprehensive understanding. This addresses information overload by presenting unique knowledge through an intuitive tree metaphor, making learning both engaging and efficient.
 
 ## License
 
-This project is created for educational and hackathon purposes. The original Prune game is owned by Joel McDonald.
-
----
-
-*"Cultivate what matters. Cut away the rest."*
+Created for Perplexity Hackathon. Original Prune game owned by Joel McDonald.

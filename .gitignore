@@ -7,3 +7,9 @@ __pycache__/
 # Virtual environments
 venv/
 
+# Vercel
+.vercel
+
+# Documentation
+ARCHITECTURE.md
+DEPLOYMENT.md
