@@ -69,6 +69,9 @@ class UltraSimplePrune {
     
     resizeCanvas() {
         const headerHeight = 60;
+        const oldWidth = this.width || 0;
+        const oldHeight = this.height || 0;
+        
         this.width = window.innerWidth;
         this.height = window.innerHeight - headerHeight;
         
@@ -81,8 +84,17 @@ class UltraSimplePrune {
         this.canvas.height = this.height;
         
         if (this.tree) {
+            // Store old position before updating
+            this.tree.oldX = this.tree.x || 0;
+            this.tree.oldY = this.tree.y || 0;
+            
             this.tree.x = this.width / 2;
             this.tree.y = this.initialHeight - 40;
+            
+            // Only update positions if this is not the first resize (when oldTreeX/Y are 0)
+            if (this.tree.oldX !== 0 || this.tree.oldY !== 0) {
+                this.repositionTreeAssets();
+            }
         }
         
         if (this.lightSource) {
@@ -107,6 +119,11 @@ class UltraSimplePrune {
             y: 80,
             radius: 25
         };
+        
+        // If we have existing branches (from loaded game), reposition them relative to the new tree position
+        if (this.tree.branches.length > 0) {
+            this.repositionTreeAssets();
+        }
     }
     
     setupEventListeners() {
@@ -465,6 +482,12 @@ class UltraSimplePrune {
         const angleSpread = Math.PI * 0.8; // 144 degrees total spread
         const startAngle = -angleSpread / 2; // Start from -72 degrees
         
+        // Always use the current trunk top position to ensure branches are attached to the trunk
+        const trunkTop = {
+            x: this.tree.x,
+            y: this.tree.y - this.tree.trunkHeight
+        };
+        
         for (let i = 0; i < branchCount; i++) {
             const angle = startAngle + (angleSpread / (branchCount - 1)) * i;
             const length = 120 + Math.random() * 60; // 120-180 pixels (even longer and more varied)
@@ -473,10 +496,10 @@ class UltraSimplePrune {
             const upwardAngle = angle - Math.PI / 2;
             
             const branch = {
-                start: { x: node.x, y: node.y },
+                start: { x: trunkTop.x, y: trunkTop.y },
                 end: {
-                    x: node.x + Math.cos(upwardAngle) * length,
-                    y: node.y + Math.sin(upwardAngle) * length
+                    x: trunkTop.x + Math.cos(upwardAngle) * length,
+                    y: trunkTop.y + Math.sin(upwardAngle) * length
                 },
                 length: 0,
                 maxLength: length,
@@ -994,11 +1017,6 @@ class UltraSimplePrune {
             
             // Create formatted content
             let formattedContent = this.formatContent(this.toProperCase(content));
-            
-            // Add source link at the top
-            if (searchResult.url) {
-                formattedContent = `<a href="${searchResult.url}" target="_blank" style="color: #3b82f6; text-decoration: none; font-size: 14px; display: block; margin-bottom: 15px;">Read more at source</a>` + formattedContent;
-            }
             
             description.innerHTML = formattedContent;
             
@@ -2227,6 +2245,44 @@ class UltraSimplePrune {
         if (modal) {
             modal.classList.remove('show');
         }
+    }
+    
+    repositionTreeAssets() {
+        if (!this.tree) return;
+        
+        // Calculate the offset for moving the tree assets
+        const treeOffsetX = this.tree.x - (this.tree.oldX || this.tree.x);
+        const treeOffsetY = this.tree.y - (this.tree.oldY || this.tree.y);
+        
+        // Update all branch positions to move with the tree
+        this.tree.branches.forEach(branch => {
+            branch.start.x += treeOffsetX;
+            branch.start.y += treeOffsetY;
+            branch.end.x += treeOffsetX;
+            branch.end.y += treeOffsetY;
+        });
+        
+        // Update all leaf positions to move with the tree
+        this.tree.leaves.forEach(leaf => {
+            leaf.x += treeOffsetX;
+            leaf.y += treeOffsetY;
+        });
+        
+        // Update all fruit positions to move with the tree
+        this.tree.fruits.forEach(fruit => {
+            fruit.x += treeOffsetX;
+            fruit.y += treeOffsetY;
+        });
+        
+        // Update all flower positions to move with the tree
+        this.tree.flowers.forEach(flower => {
+            flower.x += treeOffsetX;
+            flower.y += treeOffsetY;
+        });
+        
+        // Store current position for next resize
+        this.tree.oldX = this.tree.x;
+        this.tree.oldY = this.tree.y;
     }
     
     restartGame() {
