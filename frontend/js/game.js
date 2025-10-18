@@ -1,6 +1,7 @@
 /**
  * Main Game Class - Handles the core game logic and rendering
  */
+console.log('game.js loaded');
 class UltraSimplePrune {
     constructor() {
         this.canvas = document.getElementById('gameCanvas');
@@ -53,6 +54,7 @@ class UltraSimplePrune {
         // Initialize managers (will be set by app.js)
         this.uiManager = null;
         this.flashcardManager = null;
+        this.audioManager = null;
         
         this.init();
     }
@@ -66,6 +68,7 @@ class UltraSimplePrune {
         
         this.setupGameObjects();
         this.setupEventListeners();
+        console.log('About to call startGame');
         this.startGame();
         
         this.gameLoop();
@@ -178,11 +181,25 @@ class UltraSimplePrune {
     
     startGame() {
         console.log('Starting game...');
-        this.gameState = 'playing';
+        console.log('Tree branches length:', this.tree.branches.length);
+        console.log('Is loading game:', this.isLoadingGame);
+        
+        // Ambient music disabled for now
+        // if (this.audioManager && this.audioManager.musicEnabled) {
+        //     this.audioManager.startAmbientMusic();
+        // }
         
         // Only show welcome sequence if there are no branches AND we're not loading a game
         if (this.tree.branches.length === 0 && !this.isLoadingGame) {
-        this.startWelcomeSequence();
+            console.log('Starting in welcome mode');
+            this.gameState = 'welcome';
+            // Start welcome sequence immediately
+            setTimeout(() => {
+                this.startWelcomeSequence();
+            }, 100); // Small delay to ensure everything is initialized
+        } else {
+            console.log('Starting in playing mode');
+            this.gameState = 'playing';
         }
         
         this.loadLeavesFromSavedData();
@@ -222,6 +239,11 @@ class UltraSimplePrune {
             this.canvas.style.cursor = 'pointer';
         }
         
+        // Play tool selection sound
+        if (this.audioManager) {
+            this.audioManager.playToolSound(tool);
+        }
+        
         console.log('Tool set to:', tool);
     }
     
@@ -241,6 +263,9 @@ class UltraSimplePrune {
         } else if (this.currentTool === 'growth') {
             if (this.hoveredNode) {
                 this.growBranchesFromNode(this.hoveredNode);
+                if (this.audioManager) {
+                    this.audioManager.playSound('growth');
+                }
             }
         } else if (this.currentTool === 'leaves') {
             if (this.hoveredNode) {
@@ -248,6 +273,9 @@ class UltraSimplePrune {
                 // Create flashcards AND visual leaves
                 if (this.flashcardManager) {
                     await this.flashcardManager.createFlashcardsForNode(this.hoveredNode);
+                    if (this.audioManager) {
+                        this.audioManager.playSound('leaves');
+                    }
                 } else {
                     this.updateStatus('Flashcard manager not initialized yet');
                 }
@@ -259,6 +287,9 @@ class UltraSimplePrune {
             if (this.hoveredNode) {
                 console.log('Fruit tool: clicked on hovered node', this.hoveredNode);
                 this.transformFlowerToFruit(this.hoveredNode);
+                if (this.audioManager) {
+                    this.audioManager.playSound('fruit');
+                }
             } else {
                 console.log('Fruit tool: no hovered node');
                 this.updateStatus('Hover over a flower first, then click to transform it into fruit!');
@@ -267,6 +298,9 @@ class UltraSimplePrune {
             if (this.hoveredNode) {
                 console.log('Flower tool: clicked on hovered node', this.hoveredNode);
                 this.growFlowerOnNode(this.hoveredNode);
+                if (this.audioManager) {
+                    this.audioManager.playSound('flower');
+                }
             } else {
                 console.log('Flower tool: no hovered node');
                 this.updateStatus('Hover over an end node first, then click to blossom knowledge!');
@@ -277,6 +311,9 @@ class UltraSimplePrune {
                 this.repositioningNode = this.hoveredNode;
                 console.log('Repositioning node:', this.hoveredNode);
                 this.updateStatus('Drag to move and resize the branch!');
+                if (this.audioManager) {
+                    this.audioManager.playSound('reposition');
+                }
             } else {
                 this.updateStatus('Hover over a branch end first, then drag to reposition!');
             }
@@ -287,6 +324,9 @@ class UltraSimplePrune {
             if (this.hoveredNode && this.hoveredNode.searchResult) {
                 if (this.uiManager) {
                     this.uiManager.showStudyModal(this.hoveredNode.searchResult);
+                    if (this.audioManager) {
+                        this.audioManager.playSound('study');
+                    }
                 } else {
                     this.updateStatus('UI manager not initialized yet');
                 }
@@ -316,6 +356,11 @@ class UltraSimplePrune {
                 this.cameraOffset.y = maxPanUp;
             }
             
+            // Play subtle pan sound occasionally
+            if (Math.random() < 0.1 && this.audioManager) {
+                this.audioManager.playSound('pan');
+            }
+            
             this.panStart = { ...this.mousePos };
         } else if (this.currentTool === 'growth' || this.currentTool === 'leaves' || this.currentTool === 'fruit' || this.currentTool === 'flower' || this.currentTool === 'reposition' || this.currentTool === 'study' || this.currentTool === 'pan') {
             this.hoveredNode = this.getNodeAtPosition(this.mousePos);
@@ -336,6 +381,9 @@ class UltraSimplePrune {
         if (this.isDragging) {
             this.dragEnd = { ...this.mousePos };
             this.performPruning();
+            if (this.audioManager) {
+                this.audioManager.playSound('cut');
+            }
             this.isDragging = false;
             this.dragStart = null;
             this.dragEnd = null;
@@ -847,13 +895,13 @@ class UltraSimplePrune {
         
         if (this.isNightMode) {
             btn.innerHTML = '<i class="fas fa-sun"></i>';
-            btn.title = 'switch to day mode';
+            btn.title = 'Switch to day mode (light theme)';
             btn.style.background = 'rgba(72, 61, 139, 0.9)'; // Purple for night
             body.classList.remove('day-mode');
             this.updateStatus('Switched to night mode - moon is out!');
         } else {
             btn.innerHTML = '<i class="fas fa-moon"></i>';
-            btn.title = 'switch to night mode';
+            btn.title = 'Switch to night mode (dark theme)';
             btn.style.background = 'rgba(232, 213, 196, 0.9)'; // Slightly darker warm beige for day
             body.classList.add('day-mode');
             this.updateStatus('Switched to day mode - sun is shining!');
@@ -861,7 +909,10 @@ class UltraSimplePrune {
     }
     
     startWelcomeSequence() {
+        console.log('startWelcomeSequence called');
+        console.log('uiManager exists:', !!this.uiManager);
         if (this.uiManager) {
+            console.log('Calling uiManager.startWelcomeSequence()');
             this.uiManager.startWelcomeSequence();
         } else {
             // Fallback for when uiManager is not yet initialized
@@ -906,6 +957,10 @@ class UltraSimplePrune {
         const trunkNode = { x: this.tree.x, y: this.tree.y - this.tree.trunkHeight };
         console.log('Triggering first growth, search results:', this.searchResults);
         this.growBranchesFromNode(trunkNode);
+        
+        // Set game state to playing after first growth
+        this.gameState = 'playing';
+        
         this.updateStatus('Tree ready! Use growth tool to grow branches, cut tool to prune them.');
     }
     
@@ -1479,7 +1534,9 @@ class UltraSimplePrune {
         };
         
         // Hide any existing modals
-        this.hideStudyModal();
+        if (this.uiManager) {
+            this.uiManager.hideStudyModal();
+        }
         
         // Remove any existing prompt box
         const promptBox = document.getElementById('welcomePrompt');
@@ -1495,7 +1552,8 @@ class UltraSimplePrune {
             }
         });
         
-        // Start the welcome sequence
+        // Set game state to welcome and start the welcome sequence
+        this.gameState = 'welcome';
         this.startWelcomeSequence();
         
         this.updateStatus('Game restarted!');

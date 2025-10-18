@@ -16,10 +16,12 @@
     <canvas id="gameCanvas"></canvas>
     
     <div class="controls">
-        <button id="restartBtn" title="restart game"><i class="fas fa-redo"></i></button>
-        <button id="dayNightBtn" title="toggle day/night mode"><i class="fas fa-moon"></i></button>
-        <button id="saveBtn" title="save game state"><i class="fas fa-save"></i></button>
-        <button id="loadBtn" title="load game state"><i class="fas fa-folder-open"></i></button>
+        <button id="musicToggle" title="Toggle ambient music (currently disabled)"><i class="fas fa-volume-up"></i></button>
+        <button id="soundToggle" title="Toggle sound effects for tools and interactions"><i class="fas fa-volume-up"></i></button>
+        <button id="restartBtn" title="Restart the game and clear all progress"><i class="fas fa-redo"></i></button>
+        <button id="dayNightBtn" title="Switch between day and night mode"><i class="fas fa-moon"></i></button>
+        <button id="saveBtn" title="Save your current game progress"><i class="fas fa-save"></i></button>
+        <button id="loadBtn" title="Load a previously saved game session"><i class="fas fa-folder-open"></i></button>
     </div>
     
     <div class="toolbar">
@@ -70,11 +72,13 @@
     
     
     <!-- Game Scripts -->
-    <script src="/static/js/game.js?v=66"></script>
-    <script src="/static/js/pruning.js?v=66"></script>
-    <script src="/static/js/renderer.js?v=66"></script>
-    <script src="/static/js/ui-manager.js?v=66"></script>
-    <script src="/static/js/flashcard-manager.js?v=66"></script>
-    <script src="/static/js/app.js?v=66"></script>
+    <!-- Temporarily disabled for debugging -->
+    <!-- <script src="/static/js/audio-manager.js?v=67"></script> -->
+    <script src="/static/js/game.js?v=67"></script>
+    <script src="/static/js/pruning.js?v=67"></script>
+    <script src="/static/js/renderer.js?v=67"></script>
+    <script src="/static/js/ui-manager.js?v=67"></script>
+    <script src="/static/js/flashcard-manager.js?v=67"></script>
+    <script src="/static/js/app.js?v=67"></script>
 </body>
 </html>

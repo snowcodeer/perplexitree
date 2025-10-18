@@ -3,9 +3,12 @@
  */
 class PruneApp {
     constructor() {
+        console.log('PruneApp constructor called');
         this.game = null;
         this.renderer = null;
         this.pruningSystem = null;
+        this.audioManager = null;
+        console.log('PruneApp constructor completed');
     }
     
     init() {
@@ -14,6 +17,9 @@ class PruneApp {
         // Initialize managers first
         this.uiManager = new UIManager(null); // Will be set after game is created
         this.flashcardManager = new FlashcardManager(null); // Will be set after game is created
+        // Temporarily disable AudioManager to debug
+        // this.audioManager = new AudioManager();
+        this.audioManager = null;
         
         // Initialize game systems
         this.game = new UltraSimplePrune();
@@ -23,8 +29,11 @@ class PruneApp {
         // Set managers in game instance and update their game references
         this.game.uiManager = this.uiManager;
         this.game.flashcardManager = this.flashcardManager;
+        this.game.audioManager = this.audioManager;
         this.uiManager.game = this.game;
         this.flashcardManager.game = this.game;
+        
+        console.log('Managers set in game - uiManager:', !!this.game.uiManager, 'flashcardManager:', !!this.game.flashcardManager);
         
         // Override the game's performPruning method to use our pruning system
         this.game.performPruning = () => this.pruningSystem.performPruning();
@@ -37,6 +46,14 @@ class PruneApp {
         
         // Initialize save/load button listeners
         this.initSaveLoadListeners();
+        
+        // Initialize audio button listeners (only if audioManager exists)
+        if (this.audioManager) {
+            this.initAudioListeners();
+        }
+        
+        // Enable audio on first user interaction
+        this.enableAudioOnInteraction();
         
         console.log('Prune Game App initialized successfully!');
     }
@@ -114,6 +131,58 @@ class PruneApp {
         }
     }
     
+    initAudioListeners() {
+        // Only proceed if audioManager exists
+        if (!this.audioManager) return;
+        
+        // Music toggle button
+        const musicToggle = document.getElementById('musicToggle');
+        if (musicToggle) {
+            musicToggle.addEventListener('click', () => {
+                this.audioManager.enableAudio(); // Enable audio context on first interaction
+                this.audioManager.toggleMusic();
+                this.audioManager.playClickSound();
+            });
+        }
+        
+        // Sound toggle button
+        const soundToggle = document.getElementById('soundToggle');
+        if (soundToggle) {
+            soundToggle.addEventListener('click', () => {
+                this.audioManager.enableAudio(); // Enable audio context on first interaction
+                this.audioManager.toggleSound();
+                this.audioManager.playClickSound();
+            });
+        }
+        
+        // Add click sounds to all buttons
+        document.querySelectorAll('button').forEach(button => {
+            button.addEventListener('click', () => {
+                this.audioManager.enableAudio();
+                this.audioManager.playClickSound();
+            });
+        });
+        
+        // Initialize button states
+        this.audioManager.updateMusicButton();
+        this.audioManager.updateSoundButton();
+    }
+    
+    enableAudioOnInteraction() {
+        // Enable audio on first click anywhere (only if audioManager exists)
+        if (!this.audioManager) return;
+        
+        const enableAudio = () => {
+            this.audioManager.enableAudio();
+            // Remove listeners after first interaction
+            document.removeEventListener('click', enableAudio);
+            document.removeEventListener('keydown', enableAudio);
+        };
+        
+        document.addEventListener('click', enableAudio);
+        document.addEventListener('keydown', enableAudio);
+    }
+    
     async showLoadModal() {
         const modal = document.getElementById('loadModal');
         const sessionsList = document.getElementById('sessionsList');
@@ -188,6 +257,12 @@ class PruneApp {
 document.addEventListener('DOMContentLoaded', () => {
     console.log('DOM loaded, initializing app...');
     
-    window.app = new PruneApp();
-    window.app.init();
+    try {
+        window.app = new PruneApp();
+        console.log('PruneApp created successfully');
+        window.app.init();
+        console.log('PruneApp initialized successfully');
+    } catch (error) {
+        console.error('Error initializing app:', error);
+    }
 });

@@ -72,12 +72,14 @@ class UIManager {
     }
     
     startWelcomeSequence() {
+        console.log('UIManager.startWelcomeSequence called');
         this.game.welcomeSequence.isActive = true;
         this.game.welcomeSequence.hasShownPrompt = false;
         this.game.welcomeSequence.originalPanY = this.game.cameraOffset.y;
         // Pan up higher so dirt covers about 60% of screen (show more dirt below)
         this.game.welcomeSequence.targetPanY = -this.game.height * 0.6;
         
+        console.log('Starting welcome pan animation');
         // Start panning up
         this.animateWelcomePan();
     }
@@ -89,18 +91,22 @@ class UIManager {
         const targetY = this.game.welcomeSequence.targetPanY;
         const diff = targetY - currentY;
         
+        console.log('Welcome pan - currentY:', currentY, 'targetY:', targetY, 'diff:', diff);
+        
         if (Math.abs(diff) > 1) {
             // Continue panning
             this.game.cameraOffset.y += diff * 0.05; // Smooth animation
             requestAnimationFrame(() => this.animateWelcomePan());
         } else {
             // Reached target, show prompt
+            console.log('Welcome pan complete, showing prompt');
             this.game.cameraOffset.y = targetY;
             this.showWelcomePrompt();
         }
     }
     
     showWelcomePrompt() {
+        console.log('showWelcomePrompt called');
         if (this.game.welcomeSequence.hasShownPrompt) return;
         
         this.game.welcomeSequence.hasShownPrompt = true;
@@ -120,7 +126,13 @@ class UIManager {
         
         // Append to canvas container for proper positioning
         const canvasContainer = this.game.canvas.parentElement;
-        canvasContainer.appendChild(promptBox);
+        console.log('Canvas container:', canvasContainer);
+        if (canvasContainer) {
+            canvasContainer.appendChild(promptBox);
+            console.log('Welcome prompt added to DOM');
+        } else {
+            console.error('Canvas container not found');
+        }
         
         // Focus input and handle events
         const input = document.getElementById('welcomeInput');
