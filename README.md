@@ -1,7 +1,7 @@
 # perplexitree - AI-Powered Knowledge Tree Game
 
-Live at: https://perplexitree-38db66ssa-natalies-projects-e84f005c.vercel.app/
-Live demo: https://www.youtube.com/watch?v=P5U9jo97fCk
+- Live at: https://perplexitree-38db66ssa-natalies-projects-e84f005c.vercel.app/
+- Live demo: https://www.youtube.com/watch?v=P5U9jo97fCk
 
 A beautiful, interactive web game that combines the meditative puzzle mechanics of "Prune" with AI-powered knowledge exploration. Players grow knowledge trees by pruning branches while leveraging the Perplexity API to discover unique, real-time information on any topic. Each growth session returns fresh, non-redundant search results to build comprehensive understanding.
 
