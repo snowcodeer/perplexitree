@@ -1421,26 +1421,34 @@ class UltraSimplePrune {
         
         // Group flashcards by main topic (parent node) categories
         const groupedFlashcards = {};
+        console.log('Grouping flashcards:', this.flashcards.length, 'total cards');
         this.flashcards.forEach(card => {
             // Find the branch this flashcard was created from
             const branch = card.branch;
             let mainTopic = 'General';
             
+            console.log('Processing flashcard:', card.front, 'branch:', branch);
+            
             if (branch && branch.searchResult) {
+                console.log('Branch has searchResult:', branch.searchResult.title, 'generation:', branch.generation);
                 // If this is a first-generation branch (main topic), use its title
                 if (branch.generation === 0 || branch.generation === 1) {
                     mainTopic = branch.searchResult.title;
+                    console.log('Using branch title as main topic:', mainTopic);
                 } else {
                     // For child branches, find the parent main topic branch
                     const parentBranch = this.findParentMainTopicBranch(branch);
                     if (parentBranch && parentBranch.searchResult) {
                         mainTopic = parentBranch.searchResult.title;
+                        console.log('Using parent branch title as main topic:', mainTopic);
                     } else {
                         mainTopic = branch.searchResult.title; // Fallback
+                        console.log('Using fallback branch title as main topic:', mainTopic);
                     }
                 }
             } else {
                 mainTopic = card.category || 'General';
+                console.log('Using card category as main topic:', mainTopic);
             }
             
             if (!groupedFlashcards[mainTopic]) {
@@ -1448,6 +1456,8 @@ class UltraSimplePrune {
             }
             groupedFlashcards[mainTopic].push(card);
         });
+        
+        console.log('Grouped flashcards:', groupedFlashcards);
         
         const totalCards = this.flashcards.length;
         const totalDecks = Object.keys(groupedFlashcards).length;
@@ -2343,6 +2353,7 @@ class UltraSimplePrune {
         
         this.updateStatus('Game restarted!');
     }
+    
     
     // toggleModalExpansion method removed - modal is now wide by default
 }

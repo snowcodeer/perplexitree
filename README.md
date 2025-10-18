@@ -1,6 +1,20 @@
-# Prune Game - Web Recreation
+# PerplexTree - AI-Powered Knowledge Tree Game
 
-A beautiful, minimalist web recreation of the award-winning puzzle game "Prune" by Joel McDonald. Guide your tree's growth by pruning branches to reach the light source in this meditative, zen-like experience.
+A beautiful, interactive web game that combines the meditative puzzle mechanics of "Prune" with AI-powered knowledge exploration. Players grow knowledge trees by pruning branches while leveraging the Perplexity API to discover unique, real-time information on any topic. Each growth session returns fresh, non-redundant search results to build comprehensive understanding.
+
+## Project Summary
+
+**Purpose**: PerplexTree transforms learning into an engaging, visual experience where users cultivate knowledge trees through strategic pruning and AI-enhanced exploration. The game addresses information overload by presenting unique, curated insights through an intuitive tree metaphor.
+
+**Technical Approach**: Built with a modular architecture featuring FastAPI backend and vanilla JavaScript frontend, the application integrates Perplexity's real-time search capabilities to generate unique knowledge areas for each growth session. The system ensures non-redundant information retrieval through intelligent query generation and structured output parsing.
+
+**Perplexity API Integration**: The game leverages Perplexity's reasoning and retrieval capabilities through multiple endpoints:
+- **Structured Search**: Uses Perplexity's `sonar-pro` model with JSON schema to generate 5 unique knowledge areas per search
+- **Web Search**: Implements real-time web search with result filtering and content summarization
+- **Flashcard Generation**: Creates study materials from search results using AI-powered content analysis
+- **Unique Results**: Each growth session generates fresh, non-redundant search queries to avoid information repetition
+
+The integration ensures players receive diverse, comprehensive information while maintaining the game's meditative, focused learning experience.
 
 ## Features
 
