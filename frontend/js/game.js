@@ -48,6 +48,7 @@ class UltraSimplePrune {
         this.usedSearchResults = new Set(); // Track used search result titles to avoid duplicates
         this.currentSessionId = null; // Track current saved session ID
         this.flashcards = []; // Store flashcards for current session
+        this.isLoadingGame = false; // Flag to track when loading a saved game
         
         this.init();
     }
@@ -158,9 +159,9 @@ class UltraSimplePrune {
         console.log('Starting game...');
         this.gameState = 'playing';
         
-        // Only show welcome sequence if there are no branches (new game)
-        if (this.tree.branches.length === 0) {
-            this.startWelcomeSequence();
+        // Only show welcome sequence if there are no branches AND we're not loading a game
+        if (this.tree.branches.length === 0 && !this.isLoadingGame) {
+        this.startWelcomeSequence();
         }
         
         this.loadLeavesFromSavedData();
@@ -1235,9 +1236,15 @@ class UltraSimplePrune {
             console.log('Flashcard creation response:', data);
             
             if (data.success) {
-                this.flashcards = [...this.flashcards, ...data.flashcards];
+                // Add branch reference to each flashcard
+                const flashcardsWithBranch = data.flashcards.map(flashcard => ({
+                    ...flashcard,
+                    branch: branch // Add branch reference for pruning
+                }));
+                
+                this.flashcards = [...this.flashcards, ...flashcardsWithBranch];
                 this.updateStatus(`Created ${data.flashcards.length} flashcards for ${branch.searchResult.title}`);
-                console.log('Flashcards created:', data.flashcards);
+                console.log('Flashcards created:', flashcardsWithBranch);
                 console.log('Total flashcards now:', this.flashcards.length);
                 
                 // Show success message
@@ -1275,7 +1282,7 @@ class UltraSimplePrune {
             border-radius: 10px;
             padding: 15px 20px;
             color: white;
-            font-family: 'JetBrains Mono', monospace;
+            font-family: 'Inter', sans-serif;
             font-size: 14px;
             font-weight: 500;
             z-index: 1000;
@@ -1392,14 +1399,34 @@ class UltraSimplePrune {
             return;
         }
         
-        // Group flashcards by topic/category to get total count
+        // Group flashcards by main topic (parent node) categories
         const groupedFlashcards = {};
         this.flashcards.forEach(card => {
-            const topic = card.category || 'General';
-            if (!groupedFlashcards[topic]) {
-                groupedFlashcards[topic] = [];
+            // Find the branch this flashcard was created from
+            const branch = card.branch;
+            let mainTopic = 'General';
+            
+            if (branch && branch.searchResult) {
+                // If this is a first-generation branch (main topic), use its title
+                if (branch.generation === 0 || branch.generation === 1) {
+                    mainTopic = branch.searchResult.title;
+                } else {
+                    // For child branches, find the parent main topic branch
+                    const parentBranch = this.findParentMainTopicBranch(branch);
+                    if (parentBranch && parentBranch.searchResult) {
+                        mainTopic = parentBranch.searchResult.title;
+                    } else {
+                        mainTopic = branch.searchResult.title; // Fallback
+                    }
+                }
+            } else {
+                mainTopic = card.category || 'General';
             }
-            groupedFlashcards[topic].push(card);
+            
+            if (!groupedFlashcards[mainTopic]) {
+                groupedFlashcards[mainTopic] = [];
+            }
+            groupedFlashcards[mainTopic].push(card);
         });
         
         const totalCards = this.flashcards.length;
@@ -1413,7 +1440,7 @@ class UltraSimplePrune {
                 border-radius: 10px;
                 padding: 12px 20px;
                 color: white;
-                font-family: 'JetBrains Mono', monospace;
+                font-family: 'Inter', sans-serif;
                 font-size: 14px;
                 font-weight: 500;
                 cursor: pointer;
@@ -1430,20 +1457,67 @@ class UltraSimplePrune {
         return str.toLowerCase().replace(/\b\w/g, l => l.toUpperCase());
     }
     
+    findParentMainTopicBranch(childBranch) {
+        // Find the parent main topic branch by traversing up the tree
+        // Main topic branches are generation 0 or 1
+        let currentBranch = childBranch;
+        
+        while (currentBranch) {
+            // Check if this is a main topic branch
+            if (currentBranch.generation === 0 || currentBranch.generation === 1) {
+                return currentBranch;
+            }
+            
+            // Find the parent branch (the one that this branch starts from)
+            const parentBranch = this.tree.branches.find(b => 
+                Math.abs(b.end.x - currentBranch.start.x) < 5 && 
+                Math.abs(b.end.y - currentBranch.start.y) < 5
+            );
+            
+            if (!parentBranch) {
+                break; // No parent found
+            }
+            
+            currentBranch = parentBranch;
+        }
+        
+        return null; // No main topic branch found
+    }
+    
     showDeckView() {
         if (this.flashcards.length === 0) {
             this.updateStatus('No flashcards created yet');
             return;
         }
         
-        // Group flashcards by topic/category
+        // Group flashcards by main topic (parent node) categories
         const groupedFlashcards = {};
         this.flashcards.forEach(card => {
-            const topic = card.category || 'General';
-            if (!groupedFlashcards[topic]) {
-                groupedFlashcards[topic] = [];
+            // Find the branch this flashcard was created from
+            const branch = card.branch;
+            let mainTopic = 'General';
+            
+            if (branch && branch.searchResult) {
+                // If this is a first-generation branch (main topic), use its title
+                if (branch.generation === 0 || branch.generation === 1) {
+                    mainTopic = branch.searchResult.title;
+                } else {
+                    // For child branches, find the parent main topic branch
+                    const parentBranch = this.findParentMainTopicBranch(branch);
+                    if (parentBranch && parentBranch.searchResult) {
+                        mainTopic = parentBranch.searchResult.title;
+                    } else {
+                        mainTopic = branch.searchResult.title; // Fallback
+                    }
+                }
+            } else {
+                mainTopic = card.category || 'General';
             }
-            groupedFlashcards[topic].push(card);
+            
+            if (!groupedFlashcards[mainTopic]) {
+                groupedFlashcards[mainTopic] = [];
+            }
+            groupedFlashcards[mainTopic].push(card);
         });
         
         // Create modal with deck view
@@ -1500,7 +1574,7 @@ class UltraSimplePrune {
                     padding: 8px 16px; 
                     border-radius: 5px; 
                     cursor: pointer; 
-                    font-family: 'JetBrains Mono', monospace;
+                    font-family: 'Inter', sans-serif;
                     font-size: 12px;
                     font-weight: 500;
                 ">View All Cards</button>
@@ -1549,6 +1623,7 @@ class UltraSimplePrune {
             overflow-y: auto;
             z-index: 1000;
             color: white;
+            font-family: 'Inter', sans-serif;
         `;
         
         modal.innerHTML = `
@@ -1558,16 +1633,16 @@ class UltraSimplePrune {
             </div>
             <div id="deck-flashcards-container">
                 ${deckCards.map((card, index) => `
-                    <div class="flashcard" style="border: 1px solid #333; border-radius: 5px; margin: 10px 0; padding: 15px; background: #2a2a2a; cursor: pointer;" data-node-position='${JSON.stringify(card.node_position)}'>
+                    <div class="flashcard" style="border: 1px solid #333; border-radius: 5px; margin: 10px 0; padding: 15px; background: #2a2a2a; cursor: pointer; font-family: 'Inter', sans-serif;" data-node-position='${JSON.stringify(card.node_position)}'>
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
                             <span style="color: #3b82f6; font-weight: bold;">Card ${index + 1}</span>
                             <span style="color: #666; font-size: 12px;">${card.difficulty}</span>
                         </div>
                         <div style="margin-bottom: 10px;">
-                            <strong style="color: #fff;">Q:</strong> ${card.front}
+                            <strong style="color: #fff;">Q:</strong> ${this.formatContent(this.toProperCase(card.front))}
                         </div>
                         <div style="margin-bottom: 10px;">
-                            <strong style="color: #fff;">A:</strong> ${card.back}
+                            <strong style="color: #fff;">A:</strong> ${this.formatContent(this.toProperCase(card.back))}
                         </div>
                         <div style="color: #3b82f6; font-size: 12px; text-align: center; margin-top: 10px; padding-top: 10px; border-top: 1px solid #333;">
                             Click to highlight source node on tree
@@ -1586,7 +1661,7 @@ class UltraSimplePrune {
                 e.stopPropagation(); // Prevent modal close
                 const nodePosition = JSON.parse(card.dataset.nodePosition);
                 this.highlightNodeAtPosition(nodePosition);
-                modal.remove(); // Close modal after highlighting
+                // Don't close modal - let user continue using the highlight button
             });
         });
         
@@ -1604,14 +1679,34 @@ class UltraSimplePrune {
             return;
         }
         
-        // Group flashcards by topic/category
+        // Group flashcards by main topic (parent node) categories
         const groupedFlashcards = {};
         this.flashcards.forEach(card => {
-            const topic = card.category || 'General';
-            if (!groupedFlashcards[topic]) {
-                groupedFlashcards[topic] = [];
+            // Find the branch this flashcard was created from
+            const branch = card.branch;
+            let mainTopic = 'General';
+            
+            if (branch && branch.searchResult) {
+                // If this is a first-generation branch (main topic), use its title
+                if (branch.generation === 0 || branch.generation === 1) {
+                    mainTopic = branch.searchResult.title;
+                } else {
+                    // For child branches, find the parent main topic branch
+                    const parentBranch = this.findParentMainTopicBranch(branch);
+                    if (parentBranch && parentBranch.searchResult) {
+                        mainTopic = parentBranch.searchResult.title;
+                    } else {
+                        mainTopic = branch.searchResult.title; // Fallback
+                    }
+                }
+            } else {
+                mainTopic = card.category || 'General';
             }
-            groupedFlashcards[topic].push(card);
+            
+            if (!groupedFlashcards[mainTopic]) {
+                groupedFlashcards[mainTopic] = [];
+            }
+            groupedFlashcards[mainTopic].push(card);
         });
         
         // Create a comprehensive modal
@@ -1631,6 +1726,7 @@ class UltraSimplePrune {
             overflow-y: auto;
             z-index: 1000;
             color: white;
+            font-family: 'Inter', sans-serif;
         `;
         
         let modalHTML = `
@@ -1646,16 +1742,16 @@ class UltraSimplePrune {
                 <div style="margin-bottom: 20px; border: 1px solid #333; border-radius: 5px; padding: 15px;">
                     <h4 style="color: #3b82f6; margin: 0 0 10px 0;">${this.toProperCase(topic)} (${cards.length} cards)</h4>
                     ${cards.map((card, index) => `
-                        <div style="border: 1px solid #444; border-radius: 3px; margin: 8px 0; padding: 10px; background: #2a2a2a;">
+                        <div style="border: 1px solid #444; border-radius: 3px; margin: 8px 0; padding: 10px; background: #2a2a2a; font-family: 'Inter', sans-serif;">
                             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                                 <span style="color: #3b82f6; font-weight: bold;">Card ${index + 1}</span>
                                 <span style="color: #666; font-size: 12px;">${card.difficulty}</span>
                             </div>
                             <div style="margin-bottom: 8px;">
-                                <strong style="color: #fff;">Q:</strong> ${this.toProperCase(card.front)}
+                                <strong style="color: #fff;">Q:</strong> ${this.formatContent(this.toProperCase(card.front))}
                             </div>
                             <div>
-                                <strong style="color: #fff;">A:</strong> ${this.toProperCase(card.back)}
+                                <strong style="color: #fff;">A:</strong> ${this.formatContent(this.toProperCase(card.back))}
                             </div>
                         </div>
                     `).join('')}
@@ -1685,6 +1781,7 @@ class UltraSimplePrune {
             overflow-y: auto;
             z-index: 1000;
             color: white;
+            font-family: 'Inter', sans-serif;
         `;
         
         modal.innerHTML = `
@@ -1694,16 +1791,16 @@ class UltraSimplePrune {
             </div>
             <div id="flashcards-container">
                 ${flashcards.map((card, index) => `
-                    <div class="flashcard" style="border: 1px solid #333; border-radius: 5px; margin: 10px 0; padding: 15px; background: #2a2a2a; cursor: pointer;" data-node-position='${JSON.stringify(card.node_position)}'>
+                    <div class="flashcard" style="border: 1px solid #333; border-radius: 5px; margin: 10px 0; padding: 15px; background: #2a2a2a; cursor: pointer; font-family: 'Inter', sans-serif;" data-node-position='${JSON.stringify(card.node_position)}'>
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
                             <span style="color: #3b82f6; font-weight: bold;">Card ${index + 1}</span>
                             <span style="color: #666; font-size: 12px;">${card.difficulty}</span>
                         </div>
                         <div style="margin-bottom: 10px;">
-                            <strong style="color: #fff;">Q:</strong> ${card.front}
+                            <strong style="color: #fff;">Q:</strong> ${this.formatContent(this.toProperCase(card.front))}
                         </div>
                         <div style="margin-bottom: 10px;">
-                            <strong style="color: #fff;">A:</strong> ${card.back}
+                            <strong style="color: #fff;">A:</strong> ${this.formatContent(this.toProperCase(card.back))}
                         </div>
                         <div style="color: #3b82f6; font-size: 12px; text-align: center; margin-top: 10px; padding-top: 10px; border-top: 1px solid #333;">
                             Click to highlight source node on tree
@@ -1722,7 +1819,7 @@ class UltraSimplePrune {
                 e.stopPropagation(); // Prevent modal close
                 const nodePosition = JSON.parse(card.dataset.nodePosition);
                 this.highlightNodeAtPosition(nodePosition);
-                modal.remove(); // Close modal after highlighting
+                // Don't close modal - let user continue using the highlight button
             });
         });
         
@@ -1748,10 +1845,12 @@ class UltraSimplePrune {
         console.log('Branch positions:', this.tree.branches.map(b => ({ x: b.end.x, y: b.end.y })));
         
         // Find the node at the given position (increased tolerance)
-        const targetNode = this.tree.branches.find(branch => 
-            Math.abs(branch.end.x - nodePosition.x) < 20 && 
-            Math.abs(branch.end.y - nodePosition.y) < 20
-        );
+        const targetNode = this.tree.branches.find(branch => {
+            const distanceX = Math.abs(branch.end.x - nodePosition.x);
+            const distanceY = Math.abs(branch.end.y - nodePosition.y);
+            console.log(`Checking branch at (${branch.end.x}, ${branch.end.y}) vs target (${nodePosition.x}, ${nodePosition.y}) - distances: ${distanceX}, ${distanceY}`);
+            return distanceX < 20 && distanceY < 20;
+        });
         
         if (!targetNode) {
             console.warn('No node found at position:', nodePosition);
@@ -1907,6 +2006,14 @@ class UltraSimplePrune {
     
     async loadGameState(sessionId) {
         try {
+            this.isLoadingGame = true; // Set flag to prevent welcome sequence
+            
+            // Hide the prompt box if it exists
+            const promptBox = document.getElementById('welcomePrompt');
+            if (promptBox) {
+                promptBox.remove();
+            }
+            
             const response = await fetch('http://localhost:8001/api/load-game-state', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -1921,10 +2028,8 @@ class UltraSimplePrune {
                 // Restore original search query
                 this.originalSearchQuery = gameState.original_search_query;
                 
-                // Restore camera offset
-                if (gameState.camera_offset) {
-                    this.cameraOffset = gameState.camera_offset;
-                }
+                // Reset camera to default position (always load trees from default view)
+                this.cameraOffset = { x: 0, y: 0 };
                 
                 // Restore search results
                 this.searchResults = gameState.search_results;
@@ -1952,7 +2057,7 @@ class UltraSimplePrune {
                     this.tree.branches.push(branch);
                 });
                 
-                // Restore leaves
+                // Restore leaves with proper branch references
                 console.log('Loading leaves:', gameState.leaves);
                 gameState.leaves.forEach(leafData => {
                     const leaf = {
@@ -1962,8 +2067,27 @@ class UltraSimplePrune {
                         branchId: leafData.branchId,
                         sway: Math.random() * Math.PI * 2, // Add sway for animation
                         angle: Math.random() * Math.PI * 2, // Add angle for rotation
-                        branch: null // No branch reference for loaded leaves
+                        branch: null // Will be set below
                     };
+                    
+                    // Try to find the branch this leaf belongs to
+                    if (leafData.branchId) {
+                        // Find branch by ID (if we have branch IDs)
+                        const branch = this.tree.branches.find(b => b.id === leafData.branchId);
+                        if (branch) {
+                            leaf.branch = branch;
+                        }
+                    } else {
+                        // Find branch by position (fallback)
+                        const branch = this.tree.branches.find(branch => 
+                            Math.abs(branch.end.x - leafData.x) < 20 && 
+                            Math.abs(branch.end.y - leafData.y) < 20
+                        );
+                        if (branch) {
+                            leaf.branch = branch;
+                        }
+                    }
+                    
                     this.tree.leaves.push(leaf);
                 });
                 console.log('Total leaves after loading:', this.tree.leaves.length);
@@ -2003,19 +2127,37 @@ class UltraSimplePrune {
                     this.tree.flowers.push(flower);
                 });
                 
-                // Restore flashcards with proper node_position formatting
+                // Restore flashcards with proper node_position formatting and branch references
                 this.flashcards = (gameState.flashcards || []).map(flashcard => {
+                    let restoredFlashcard = { ...flashcard };
+                    
                     // Convert node_position_x and node_position_y to node_position object
                     if (flashcard.node_position_x !== undefined && flashcard.node_position_y !== undefined) {
-                        return {
-                            ...flashcard,
-                            node_position: {
-                                x: flashcard.node_position_x,
-                                y: flashcard.node_position_y
-                            }
+                        restoredFlashcard.node_position = {
+                            x: flashcard.node_position_x,
+                            y: flashcard.node_position_y
                         };
                     }
-                    return flashcard;
+                    
+                    // Try to find the branch this flashcard belongs to
+                    if (flashcard.branch_id) {
+                        // Find branch by ID (if we have branch IDs)
+                        const branch = this.tree.branches.find(b => b.id === flashcard.branch_id);
+                        if (branch) {
+                            restoredFlashcard.branch = branch;
+                        }
+                    } else if (restoredFlashcard.node_position) {
+                        // Find branch by position (fallback)
+                        const branch = this.tree.branches.find(branch => 
+                            Math.abs(branch.end.x - restoredFlashcard.node_position.x) < 20 && 
+                            Math.abs(branch.end.y - restoredFlashcard.node_position.y) < 20
+                        );
+                        if (branch) {
+                            restoredFlashcard.branch = branch;
+                        }
+                    }
+                    
+                    return restoredFlashcard;
                 });
                 
                 this.currentSessionId = sessionId;
@@ -2033,6 +2175,8 @@ class UltraSimplePrune {
         } catch (error) {
             console.error('Error loading game state:', error);
             this.updateStatus('Error loading game state');
+        } finally {
+            this.isLoadingGame = false; // Reset flag
         }
     }
     
@@ -2083,6 +2227,46 @@ class UltraSimplePrune {
         if (modal) {
             modal.classList.remove('show');
         }
+    }
+    
+    restartGame() {
+        // Reset all game state
+        this.tree.branches = [];
+        this.tree.leaves = [];
+        this.tree.fruits = [];
+        this.tree.flowers = [];
+        this.searchResults = [];
+        this.originalSearchQuery = null;
+        this.usedSearchResults = new Set();
+        this.currentSessionId = null;
+        this.flashcards = [];
+        this.isLoadingGame = false;
+        
+        // Reset camera to default position
+        this.cameraOffset = { x: 0, y: 0 };
+        
+        // Reset welcome sequence
+        this.welcomeSequence = {
+            isActive: false,
+            hasShownPrompt: false,
+            targetPanY: 0,
+            currentPanY: 0,
+            panSpeed: 0.02
+        };
+        
+        // Hide any existing modals
+        this.hideStudyModal();
+        
+        // Remove any existing prompt box
+        const promptBox = document.getElementById('welcomePrompt');
+        if (promptBox) {
+            promptBox.remove();
+        }
+        
+        // Start the welcome sequence
+        this.startWelcomeSequence();
+        
+        this.updateStatus('Game restarted!');
     }
     
     // toggleModalExpansion method removed - modal is now wide by default

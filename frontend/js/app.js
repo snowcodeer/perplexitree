@@ -61,6 +61,14 @@ class PruneApp {
     }
     
     initSaveLoadListeners() {
+        // Restart button
+        const restartBtn = document.getElementById('restartBtn');
+        if (restartBtn) {
+            restartBtn.addEventListener('click', () => {
+                this.restartGame();
+            });
+        }
+        
         // Save button
         const saveBtn = document.getElementById('saveBtn');
         if (saveBtn) {
@@ -158,6 +166,11 @@ class PruneApp {
     
     showDeckView() {
         this.game.showDeckView();
+    }
+    
+    restartGame() {
+        // Reset the game state
+        this.game.restartGame();
     }
 }
 

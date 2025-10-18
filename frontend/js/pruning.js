@@ -35,6 +35,7 @@ class PruningSystem {
         
         if (branchesToRemove.length > 0) {
             this.removeLeavesFromRemovedBranches(branchesToRemove);
+            this.removeFlashcardsFromRemovedBranches(branchesToRemove);
             console.log(`Pruned ${branchesToRemove.length} branches (${directlyCutBranches.length} directly cut, ${disconnectedBranches.length} disconnected)`);
             this.game.updateStatus(`Pruned ${branchesToRemove.length} branches!`);
         }
@@ -106,7 +107,11 @@ class PruningSystem {
         // Filter out leaves that belong to removed branches
         this.game.tree.leaves = this.game.tree.leaves.filter(leaf => {
             // Check if the leaf's branch is in the removed branches set
-            return !removedBranchSet.has(leaf.branch);
+            const shouldKeep = !removedBranchSet.has(leaf.branch);
+            if (!shouldKeep) {
+                console.log('Removing leaf from pruned branch:', leaf);
+            }
+            return shouldKeep;
         });
         
         // Filter out fruits that belong to removed branches
@@ -127,6 +132,31 @@ class PruningSystem {
         
         if (removedLeafCount > 0 || removedFruitCount > 0 || removedFlowerCount > 0) {
             console.log(`Removed ${removedLeafCount} leaves, ${removedFruitCount} fruits, and ${removedFlowerCount} flowers from pruned branches`);
+        }
+    }
+    
+    removeFlashcardsFromRemovedBranches(removedBranches) {
+        const initialFlashcardCount = this.game.flashcards.length;
+        
+        // Create a set of removed branches for quick lookup
+        const removedBranchSet = new Set(removedBranches);
+        
+        // Filter out flashcards that belong to removed branches
+        this.game.flashcards = this.game.flashcards.filter(flashcard => {
+            // Check if the flashcard's branch is in the removed branches set
+            const shouldKeep = !removedBranchSet.has(flashcard.branch);
+            if (!shouldKeep) {
+                console.log('Removing flashcard from pruned branch:', flashcard);
+            }
+            return shouldKeep;
+        });
+        
+        const removedFlashcardCount = initialFlashcardCount - this.game.flashcards.length;
+        
+        if (removedFlashcardCount > 0) {
+            console.log(`Removed ${removedFlashcardCount} flashcards from pruned branches`);
+            // Update the flashcard deck display
+            this.game.updateFlashcardDeck();
         }
     }
     

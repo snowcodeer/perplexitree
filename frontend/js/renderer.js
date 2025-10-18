@@ -38,12 +38,14 @@ class Renderer {
         
         // Render cut tool visual (inside camera transform, like it was before)
         if (this.game.currentTool === 'cut' && this.game.isDragging && this.game.dragStart && this.game.dragEnd) {
+            console.log('RENDERING CUT TOOL VISUAL:', this.game.dragStart, this.game.dragEnd);
             this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
             this.ctx.lineWidth = 3;
             this.ctx.setLineDash([5, 5]);
             this.ctx.beginPath();
-            this.ctx.moveTo(this.game.dragStart.x, this.game.dragStart.y);
-            this.ctx.lineTo(this.game.dragEnd.x, this.game.dragEnd.y);
+            // Convert screen coordinates to world coordinates by subtracting camera offset
+            this.ctx.moveTo(this.game.dragStart.x - this.game.cameraOffset.x, this.game.dragStart.y - this.game.cameraOffset.y);
+            this.ctx.lineTo(this.game.dragEnd.x - this.game.cameraOffset.x, this.game.dragEnd.y - this.game.cameraOffset.y);
             this.ctx.stroke();
             this.ctx.setLineDash([]);
         }
