@@ -538,11 +538,12 @@ class UltraSimplePrune {
         const maxLength = baseLength * (2.0 + Math.random() * 1.5);
         
         let angle;
+        let parentBranch = null;
         if (Math.abs(startPoint.x - this.tree.x) < 5 && 
             Math.abs(startPoint.y - (this.tree.y - this.tree.trunkHeight)) < 5) {
             angle = (Math.random() - 0.5) * Math.PI * 1.2 - Math.PI * 0.1;
         } else {
-            const parentBranch = this.tree.branches.find(b => 
+            parentBranch = this.tree.branches.find(b => 
                 Math.abs(b.end.x - startPoint.x) < 5 && 
                 Math.abs(b.end.y - startPoint.y) < 5
             );
@@ -562,7 +563,9 @@ class UltraSimplePrune {
             },
             length: baseLength,
             maxLength: maxLength,
-            thickness: thickness
+            thickness: thickness,
+            generation: parentBranch ? parentBranch.generation + 1 : 1,
+            parent: parentBranch
         };
         
         this.tree.branches.push(branch);
@@ -1431,20 +1434,19 @@ class UltraSimplePrune {
             
             if (branch && branch.searchResult) {
                 console.log('Branch has searchResult:', branch.searchResult.title, 'generation:', branch.generation);
-                // If this is a first-generation branch (main topic), use its title
-                if (branch.generation === 0 || branch.generation === 1) {
+                // Always try to find the parent main topic branch first
+                const parentBranch = this.findParentMainTopicBranch(branch);
+                if (parentBranch && parentBranch.searchResult) {
+                    mainTopic = parentBranch.searchResult.title;
+                    console.log('Using parent main topic branch title:', mainTopic);
+                } else if (branch.generation === 0 || branch.generation === 1) {
+                    // If this is already a main topic branch, use its title
                     mainTopic = branch.searchResult.title;
-                    console.log('Using branch title as main topic:', mainTopic);
+                    console.log('Using current branch as main topic (generation 0/1):', mainTopic);
                 } else {
-                    // For child branches, find the parent main topic branch
-                    const parentBranch = this.findParentMainTopicBranch(branch);
-                    if (parentBranch && parentBranch.searchResult) {
-                        mainTopic = parentBranch.searchResult.title;
-                        console.log('Using parent branch title as main topic:', mainTopic);
-                    } else {
-                        mainTopic = branch.searchResult.title; // Fallback
-                        console.log('Using fallback branch title as main topic:', mainTopic);
-                    }
+                    // Fallback to current branch title
+                    mainTopic = branch.searchResult.title;
+                    console.log('Using fallback branch title as main topic:', mainTopic);
                 }
             } else {
                 mainTopic = card.category || 'General';
@@ -1488,29 +1490,29 @@ class UltraSimplePrune {
     }
     
     findParentMainTopicBranch(childBranch) {
-        // Find the parent main topic branch by traversing up the tree
+        // Find the parent main topic branch by traversing up the tree using parent relationships
         // Main topic branches are generation 0 or 1
         let currentBranch = childBranch;
+        console.log('Finding parent main topic for branch:', childBranch.searchResult?.title, 'generation:', childBranch.generation);
         
         while (currentBranch) {
             // Check if this is a main topic branch
             if (currentBranch.generation === 0 || currentBranch.generation === 1) {
+                console.log('Found main topic branch:', currentBranch.searchResult?.title, 'generation:', currentBranch.generation);
                 return currentBranch;
             }
             
-            // Find the parent branch (the one that this branch starts from)
-            const parentBranch = this.tree.branches.find(b => 
-                Math.abs(b.end.x - currentBranch.start.x) < 5 && 
-                Math.abs(b.end.y - currentBranch.start.y) < 5
-            );
-            
-            if (!parentBranch) {
+            // Use the parent relationship instead of coordinate matching
+            if (currentBranch.parent) {
+                console.log('Found parent branch:', currentBranch.parent.searchResult?.title, 'generation:', currentBranch.parent.generation);
+                currentBranch = currentBranch.parent;
+            } else {
+                console.log('No parent branch found for:', currentBranch.searchResult?.title);
                 break; // No parent found
             }
-            
-            currentBranch = parentBranch;
         }
         
+        console.log('No main topic branch found for:', childBranch.searchResult?.title);
         return null; // No main topic branch found
     }
     
@@ -1937,7 +1939,10 @@ class UltraSimplePrune {
             }));
             
             // Prepare branches data with hierarchy
-            const branchesData = this.tree.branches.map(branch => ({
+            console.log('Saving branches with parent relationships...');
+            const branchesData = this.tree.branches.map(branch => {
+                console.log(`Saving branch:`, branch.searchResult?.title, 'parent:', branch.parent?.searchResult?.title, 'parentId:', branch.parent?.id);
+                return {
                 start: { x: branch.start.x, y: branch.start.y },
                 end: { x: branch.end.x, y: branch.end.y },
                 length: branch.length,
@@ -1948,9 +1953,10 @@ class UltraSimplePrune {
                 isGrowing: branch.isGrowing,
                 growthSpeed: branch.growthSpeed,
                 nodeType: branch.nodeType || "branch",
-                parentBranchId: branch.parentBranchId || null,
+                    parentId: branch.parent?.id || null,
                 searchResult: branch.searchResult || null
-            }));
+                };
+            });
             
             // Prepare leaves data
             const leavesData = this.tree.leaves.map(leaf => ({
@@ -2083,10 +2089,31 @@ class UltraSimplePrune {
                         isGrowing: branchData.isGrowing,
                         growthSpeed: branchData.growthSpeed,
                         searchResult: branchData.searchResult,
-                        id: branchData.id // Preserve branch ID for reference
+                        id: branchData.id, // Preserve branch ID for reference
+                        parent: null // Will be set below after all branches are loaded
                     };
                     this.tree.branches.push(branch);
                 });
+                
+                // Restore parent relationships after all branches are loaded
+                console.log('Restoring parent relationships...');
+                gameState.branches.forEach((branchData, index) => {
+                    console.log(`Branch ${index}:`, branchData.searchResult?.title, 'parentId:', branchData.parentId);
+                    if (branchData.parentId) {
+                        const parentBranch = this.tree.branches.find(b => b.id === branchData.parentId);
+                        if (parentBranch) {
+                            this.tree.branches[index].parent = parentBranch;
+                            console.log(`  -> Found parent:`, parentBranch.searchResult?.title);
+                        } else {
+                            console.log(`  -> Parent not found for ID:`, branchData.parentId);
+                        }
+                    } else {
+                        console.log(`  -> No parent ID`);
+                    }
+                });
+                
+                // Reposition all tree assets to match current tree position
+                this.repositionTreeAssets();
                 
                 // Restore leaves with proper branch references
                 console.log('Loading leaves:', gameState.leaves);
