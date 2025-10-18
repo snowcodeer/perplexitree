@@ -2093,7 +2093,7 @@ class UltraSimplePrune {
                     this.tree.branches.push(branch);
                 });
                 
-                // Simple offset: move everything by the same amount the trunk moved
+                // Apply offset to branches first
                 const firstGenBranch = this.tree.branches.find(b => b.generation === 1);
                 if (firstGenBranch) {
                     const trunkOffsetX = this.tree.x - firstGenBranch.start.x;
@@ -2105,24 +2105,6 @@ class UltraSimplePrune {
                         branch.start.y += trunkOffsetY;
                         branch.end.x += trunkOffsetX;
                         branch.end.y += trunkOffsetY;
-                    });
-                    
-                    // Apply the same offset to ALL leaves
-                    this.tree.leaves.forEach(leaf => {
-                        leaf.x += trunkOffsetX;
-                        leaf.y += trunkOffsetY;
-                    });
-                    
-                    // Apply the same offset to ALL flowers
-                    this.tree.flowers.forEach(flower => {
-                        flower.x += trunkOffsetX;
-                        flower.y += trunkOffsetY;
-                    });
-                    
-                    // Apply the same offset to ALL fruits
-                    this.tree.fruits.forEach(fruit => {
-                        fruit.x += trunkOffsetX;
-                        fruit.y += trunkOffsetY;
                     });
                 }
                 
@@ -2240,6 +2222,31 @@ class UltraSimplePrune {
                 this.currentSessionId = sessionId;
                 this.updateStatus(`Game state loaded! Query: ${this.originalSearchQuery}`);
                 console.log('Game state loaded successfully:', data);
+                
+                // Apply offset to leaves, flowers, and fruits after they're all loaded
+                const firstGenBranchForAssets = this.tree.branches.find(b => b.generation === 1);
+                if (firstGenBranchForAssets) {
+                    const trunkOffsetX = this.tree.x - firstGenBranchForAssets.start.x;
+                    const trunkOffsetY = (this.tree.y - this.tree.trunkHeight) - firstGenBranchForAssets.start.y;
+                    
+                    // Apply the same offset to ALL leaves
+                    this.tree.leaves.forEach(leaf => {
+                        leaf.x += trunkOffsetX;
+                        leaf.y += trunkOffsetY;
+                    });
+                    
+                    // Apply the same offset to ALL flowers
+                    this.tree.flowers.forEach(flower => {
+                        flower.x += trunkOffsetX;
+                        flower.y += trunkOffsetY;
+                    });
+                    
+                    // Apply the same offset to ALL fruits
+                    this.tree.fruits.forEach(fruit => {
+                        fruit.x += trunkOffsetX;
+                        fruit.y += trunkOffsetY;
+                    });
+                }
                 
                 // Update the flashcard deck display
                 this.updateFlashcardDeck();
