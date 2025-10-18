@@ -642,6 +642,12 @@ class UltraSimplePrune {
     repositionNode(newPos) {
         if (!this.repositioningNode) return;
         
+        // Adjust position for camera offset
+        const adjustedPos = {
+            x: newPos.x - this.cameraOffset.x,
+            y: newPos.y - this.cameraOffset.y
+        };
+        
         const trunkPoint = { x: this.tree.x, y: this.tree.y - this.tree.trunkHeight };
         
         if (Math.abs(this.repositioningNode.x - trunkPoint.x) < 5 && 
@@ -656,9 +662,9 @@ class UltraSimplePrune {
         });
         
         if (branchToReposition) {
-            // Calculate new length based on distance from start point
-            const dx = newPos.x - branchToReposition.start.x;
-            const dy = newPos.y - branchToReposition.start.y;
+            // Calculate new length based on distance from start point (using adjusted position)
+            const dx = adjustedPos.x - branchToReposition.start.x;
+            const dy = adjustedPos.y - branchToReposition.start.y;
             const newLength = Math.sqrt(dx * dx + dy * dy);
             
             // Limit the length to reasonable bounds (minimum 5, maximum 200)
