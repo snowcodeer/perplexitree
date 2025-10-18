@@ -44,6 +44,7 @@ class SearchRequest(BaseModel):
 class WebSearchRequest(BaseModel):
     query: str
     count: int = 5
+    negative_prompts: list = []  # List of existing search results to exclude
 
 class SaveGameStateRequest(BaseModel):
     original_search_query: str
@@ -147,9 +148,16 @@ def web_search(request: WebSearchRequest):
     try:
         client = Perplexity()
 
+        # Construct query with negative prompts if provided
+        query = request.query
+        if request.negative_prompts:
+            # Add negative prompts to exclude existing results
+            negative_terms = ", ".join([f'"{prompt}"' for prompt in request.negative_prompts])
+            query = f"{request.query} -{negative_terms}"
+
         # Use basic search that works (images not supported in this SDK version)
         search = client.search.create(
-            query=request.query,
+            query=query,
             max_results=request.count,
             max_tokens_per_page=1024
         )
