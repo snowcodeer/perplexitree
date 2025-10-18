@@ -29,6 +29,7 @@ class PruneApp {
 // Initialize the application when the DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
     console.log('DOM loaded, initializing app...');
+    
     const app = new PruneApp();
     app.init();
 });

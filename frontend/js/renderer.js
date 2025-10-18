@@ -10,6 +10,10 @@ class Renderer {
     render() {
         this.ctx.clearRect(0, 0, this.game.width, this.game.height);
         
+        // Apply camera offset for all world elements (including ground)
+        this.ctx.save();
+        this.ctx.translate(this.game.cameraOffset.x, this.game.cameraOffset.y);
+        
         this.renderGround();
         this.renderTrunk();
         this.renderBranches();
@@ -33,6 +37,8 @@ class Renderer {
             this.ctx.setLineDash([]);
         }
         
+        this.ctx.restore();
+        
         this.renderUI();
     }
     
@@ -41,17 +47,20 @@ class Renderer {
         const groundY = this.game.height - groundHeight;
         
         this.ctx.fillStyle = '#000000';
-        this.ctx.beginPath();
-        this.ctx.moveTo(0, groundY);
         
-        for (let x = 0; x <= this.game.width; x += 3) {
+        // Draw the wavy top edge and extend in all directions
+        this.ctx.beginPath();
+        this.ctx.moveTo(-1000, groundY); // Start way to the left
+        
+        for (let x = -1000; x <= this.game.width + 1000; x += 3) {
             const wave = Math.sin(x * 0.01) * 6 + Math.sin(x * 0.03) * 3;
             const y = groundY + wave;
             this.ctx.lineTo(x, y);
         }
         
-        this.ctx.lineTo(this.game.width, this.game.height);
-        this.ctx.lineTo(0, this.game.height);
+        // Extend the ground way down and to the sides to fill the entire area
+        this.ctx.lineTo(this.game.width + 1000, this.game.height + 1000); // Bottom right
+        this.ctx.lineTo(-1000, this.game.height + 1000); // Bottom left
         this.ctx.closePath();
         this.ctx.fill();
     }
@@ -222,22 +231,28 @@ class Renderer {
     renderUI() {
         // Keep text color consistent - it's rendered over the black soil
         this.ctx.fillStyle = '#ecf0f1'; // Light text that shows well over dark soil
-        this.ctx.font = '14px Arial';
+        this.ctx.font = '12px "JetBrains Mono", "Source Code Pro", "Fira Code", "Courier New", monospace';
         
-        if (this.game.currentTool === 'growth') {
-            this.ctx.fillText('Growth Tool: Hover over nodes and click to grow branches', 10, 20);
+        // Position text at top left with same padding as buttons
+        const textX = 20; // Same left padding as control buttons
+        const textY = 20; // Back to top position
+        
+        if (this.game.currentTool === 'pan') {
+            this.ctx.fillText('pan tool: drag to move around the view', textX, textY);
+        } else if (this.game.currentTool === 'growth') {
+            this.ctx.fillText('growth tool: hover over nodes and click to grow branches', textX, textY);
         } else if (this.game.currentTool === 'leaves') {
-            this.ctx.fillText('Leaves Tool: Hover over nodes and click to add leaves to its branches', 10, 20);
+            this.ctx.fillText('leaves tool: hover over nodes and click to add leaves to its branches', textX, textY);
         } else if (this.game.currentTool === 'fruit') {
-            this.ctx.fillText('Bear Fruit of Labour: Hover over flowers and click to transform them into apples', 10, 20);
+            this.ctx.fillText('bear fruit of labour: hover over flowers and click to transform them into apples', textX, textY);
         } else if (this.game.currentTool === 'flower') {
-            this.ctx.fillText('Blossom Your Knowledge: Hover over branch ends and click to add flowers', 10, 20);
+            this.ctx.fillText('blossom your knowledge: hover over branch ends and click to add flowers', textX, textY);
         } else if (this.game.currentTool === 'reposition') {
-            this.ctx.fillText('Reposition Tool: Drag branch ends to move and resize them', 10, 20);
+            this.ctx.fillText('reposition tool: drag branch ends to move and resize them', textX, textY);
         } else {
-            this.ctx.fillText('Cut Tool: Click and drag to prune branches', 10, 20);
+            this.ctx.fillText('cut tool: click and drag to prune branches', textX, textY);
         }
         
-        this.ctx.fillText(`Branches: ${this.game.tree.branches.length} | Leaves: ${this.game.tree.leaves.length} | Fruits: ${this.game.tree.fruits.length} | Flowers: ${this.game.tree.flowers.length}`, 10, this.game.height - 10);
+        this.ctx.fillText(`branches: ${this.game.tree.branches.length} | leaves: ${this.game.tree.leaves.length} | fruits: ${this.game.tree.fruits.length} | flowers: ${this.game.tree.flowers.length}`, 10, this.game.height - 10);
     }
 }

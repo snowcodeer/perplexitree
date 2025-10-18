@@ -20,6 +20,11 @@ class UltraSimplePrune {
         this.isNightMode = false;
         this.hoveredNode = null;
         
+        // Pan functionality
+        this.isPanning = false;
+        this.panStart = null;
+        this.cameraOffset = { x: 0, y: 0 };
+        
         // Game objects
         this.tree = null;
         this.lightSource = null;
@@ -33,6 +38,7 @@ class UltraSimplePrune {
     
     init() {
         console.log('Initializing game...');
+        
         
         this.resizeCanvas();
         window.addEventListener('resize', () => { this.resizeCanvas(); });
@@ -61,7 +67,6 @@ class UltraSimplePrune {
             this.lightSource.x = this.width / 2;
         }
         
-        console.log('Canvas resized to:', this.width, 'x', this.height);
     }
     
     setupGameObjects() {
@@ -107,6 +112,10 @@ class UltraSimplePrune {
             this.setTool('reposition');
         });
         
+        document.getElementById('panTool').addEventListener('click', () => {
+            this.setTool('pan');
+        });
+        
         document.getElementById('restartBtn').addEventListener('click', () => {
             this.restartGame();
         });
@@ -123,13 +132,15 @@ class UltraSimplePrune {
     startGame() {
         console.log('Starting game...');
         this.gameState = 'playing';
-        this.updateStatus('Game started! Use Growth Tool to grow branches, Cut Tool to prune them.');
+        this.updateStatus('Game started! Use growth tool to grow branches, cut tool to prune them.');
     }
     
     setTool(tool) {
         this.currentTool = tool;
         
         document.querySelectorAll('.tool-btn').forEach(btn => btn.classList.remove('active'));
+        this.canvas.style.cursor = 'default';
+        
         if (tool === 'growth') {
             document.getElementById('growthTool').classList.add('active');
         } else if (tool === 'cut') {
@@ -142,6 +153,9 @@ class UltraSimplePrune {
             document.getElementById('flowerTool').classList.add('active');
         } else if (tool === 'reposition') {
             document.getElementById('repositionTool').classList.add('active');
+        } else if (tool === 'pan') {
+            document.getElementById('panTool').classList.add('active');
+            this.canvas.style.cursor = 'grab';
         }
         
         console.log('Tool set to:', tool);
@@ -156,7 +170,11 @@ class UltraSimplePrune {
             y: e.clientY - rect.top
         };
         
-        if (this.currentTool === 'growth') {
+        if (this.currentTool === 'pan') {
+            this.isPanning = true;
+            this.panStart = { ...this.mousePos };
+            this.canvas.style.cursor = 'grabbing';
+        } else if (this.currentTool === 'growth') {
             if (this.hoveredNode) {
                 this.growBranchesFromNode(this.hoveredNode);
             }
@@ -208,7 +226,21 @@ class UltraSimplePrune {
             y: e.clientY - rect.top
         };
         
-        if (this.currentTool === 'growth' || this.currentTool === 'leaves' || this.currentTool === 'fruit' || this.currentTool === 'flower' || this.currentTool === 'reposition') {
+        if (this.isPanning && this.panStart) {
+            const deltaX = this.mousePos.x - this.panStart.x;
+            const deltaY = this.mousePos.y - this.panStart.y;
+            
+            this.cameraOffset.x += deltaX;
+            this.cameraOffset.y += deltaY;
+            
+            // Prevent panning below ground level (ground is at height - 40)
+            const maxPanUp = this.height - 40; // Can't pan up more than ground level
+            if (this.cameraOffset.y > maxPanUp) {
+                this.cameraOffset.y = maxPanUp;
+            }
+            
+            this.panStart = { ...this.mousePos };
+        } else if (this.currentTool === 'growth' || this.currentTool === 'leaves' || this.currentTool === 'fruit' || this.currentTool === 'flower' || this.currentTool === 'reposition') {
             this.hoveredNode = this.getNodeAtPosition(this.mousePos);
         } else if (this.currentTool === 'cut' && this.isDragging) {
             this.dragEnd = { ...this.mousePos };
@@ -235,6 +267,12 @@ class UltraSimplePrune {
             this.isRepositioning = false;
             this.repositioningNode = null;
             console.log('Mouse up - repositioning finished');
+        }
+        
+        if (this.isPanning) {
+            this.isPanning = false;
+            this.panStart = null;
+            this.canvas.style.cursor = 'default';
         }
     }
     
@@ -284,16 +322,22 @@ class UltraSimplePrune {
     // Light source collision check removed - no win condition
     
     getNodeAtPosition(pos) {
+        // Adjust position for camera offset
+        const adjustedPos = {
+            x: pos.x - this.cameraOffset.x,
+            y: pos.y - this.cameraOffset.y
+        };
+        
         const trunkPoint = { x: this.tree.x, y: this.tree.y - this.tree.trunkHeight };
         
-        if (Math.abs(pos.x - trunkPoint.x) < 8 && Math.abs(pos.y - trunkPoint.y) < 8) {
+        if (Math.abs(adjustedPos.x - trunkPoint.x) < 8 && Math.abs(adjustedPos.y - trunkPoint.y) < 8) {
             return trunkPoint;
         }
         
         // Check for flowers first (if fruit tool is active)
         if (this.currentTool === 'fruit') {
             for (let flower of this.tree.flowers) {
-                if (Math.abs(pos.x - flower.x) < 12 && Math.abs(pos.y - flower.y) < 12) {
+                if (Math.abs(adjustedPos.x - flower.x) < 12 && Math.abs(adjustedPos.y - flower.y) < 12) {
                     return { x: flower.x, y: flower.y, isFlower: true, flower: flower };
                 }
             }
@@ -301,7 +345,7 @@ class UltraSimplePrune {
         
         for (let branch of this.tree.branches) {
             if (branch.length >= branch.maxLength) {
-                if (Math.abs(pos.x - branch.end.x) < 8 && Math.abs(pos.y - branch.end.y) < 8) {
+                if (Math.abs(adjustedPos.x - branch.end.x) < 8 && Math.abs(adjustedPos.y - branch.end.y) < 8) {
                     return { x: branch.end.x, y: branch.end.y };
                 }
             }
@@ -323,13 +367,58 @@ class UltraSimplePrune {
             return;
         }
         
-        const branchCount = 3 + Math.floor(Math.random() * 3);
+        // Check if this is the trunk top and it's the first growth
+        const trunkTop = {
+            x: this.tree.x,
+            y: this.tree.y - this.tree.trunkHeight
+        };
+        const isTrunkTop = Math.abs(node.x - trunkTop.x) < 5 && Math.abs(node.y - trunkTop.y) < 5;
+        
+        if (isTrunkTop && existingBranches.length === 0) {
+            // First growth from trunk - create 5 evenly spaced branches
+            this.createInitialFanBranches(node);
+        } else {
+            // Normal growth - random number of branches
+            const branchCount = 3 + Math.floor(Math.random() * 3);
+            
+            for (let i = 0; i < branchCount; i++) {
+                this.addBranchFromNode(node);
+            }
+            
+            this.updateStatus(`Grew ${branchCount} branches from node!`);
+        }
+    }
+    
+    createInitialFanBranches(node) {
+        const branchCount = 5;
+        const angleSpread = Math.PI * 0.8; // 144 degrees total spread
+        const startAngle = -angleSpread / 2; // Start from -72 degrees
         
         for (let i = 0; i < branchCount; i++) {
-            this.addBranchFromNode(node);
+            const angle = startAngle + (angleSpread / (branchCount - 1)) * i;
+            const length = 80 + Math.random() * 40; // 80-120 pixels (longer and more varied)
+            
+            // Adjust angle to grow upward (subtract π/2 to rotate 90 degrees counterclockwise)
+            const upwardAngle = angle - Math.PI / 2;
+            
+            const branch = {
+                start: { x: node.x, y: node.y },
+                end: {
+                    x: node.x + Math.cos(upwardAngle) * length,
+                    y: node.y + Math.sin(upwardAngle) * length
+                },
+                length: 0,
+                maxLength: length,
+                angle: upwardAngle,
+                thickness: 15, // Thick initial branches
+                generation: 1,
+                parent: null
+            };
+            
+            this.tree.branches.push(branch);
         }
         
-        this.updateStatus(`Grew ${branchCount} branches from node!`);
+        this.updateStatus(`Grew ${branchCount} branches from trunk!`);
     }
     
     addBranchFromNode(startPoint) {
@@ -435,7 +524,7 @@ class UltraSimplePrune {
         
         // Check if we clicked on a flower
         if (!node.isFlower || !node.flower) {
-            this.updateStatus('Bear Fruit of Labour only works on flowers! Click on a flower to transform it.');
+            this.updateStatus('Bear fruit of labour only works on flowers! Click on a flower to transform it.');
             return;
         }
         
@@ -563,8 +652,8 @@ class UltraSimplePrune {
             const dy = newPos.y - branchToReposition.start.y;
             const newLength = Math.sqrt(dx * dx + dy * dy);
             
-            // Limit the length to reasonable bounds (minimum 10, maximum 200)
-            const clampedLength = Math.max(10, Math.min(200, newLength));
+            // Limit the length to reasonable bounds (minimum 5, maximum 200)
+            const clampedLength = Math.max(5, Math.min(200, newLength));
             
             // Calculate the direction from start to new position
             const angle = Math.atan2(dy, dx);
@@ -576,10 +665,8 @@ class UltraSimplePrune {
             // Update the branch length
             branchToReposition.length = clampedLength;
             
-            // Update max length to match new length if it's longer
-            if (clampedLength > branchToReposition.maxLength) {
-                branchToReposition.maxLength = clampedLength;
-            }
+            // Always update max length to match the new length (allows both shortening and lengthening)
+            branchToReposition.maxLength = clampedLength;
             
             // Update child branches that start from this node
             this.tree.branches.forEach(childBranch => {
@@ -618,13 +705,15 @@ class UltraSimplePrune {
         const body = document.body;
         
         if (this.isNightMode) {
-            btn.textContent = '☀️ Day Mode';
+            btn.innerHTML = '<i class="fas fa-sun"></i>';
+            btn.title = 'switch to day mode';
             btn.style.background = 'rgba(72, 61, 139, 0.9)'; // Purple for night
             body.classList.remove('day-mode');
             this.updateStatus('Switched to night mode - moon is out!');
         } else {
-            btn.textContent = '🌙 Night Mode';
-            btn.style.background = 'rgba(245, 230, 211, 0.9)'; // Warm beige for day
+            btn.innerHTML = '<i class="fas fa-moon"></i>';
+            btn.title = 'switch to night mode';
+            btn.style.background = 'rgba(232, 213, 196, 0.9)'; // Slightly darker warm beige for day
             body.classList.add('day-mode');
             this.updateStatus('Switched to day mode - sun is shining!');
         }
@@ -637,6 +726,6 @@ class UltraSimplePrune {
         this.tree.fruits = [];
         this.tree.flowers = [];
         this.gameState = 'playing';
-        this.updateStatus('Game restarted! Use Growth Tool to grow branches.');
+        this.updateStatus('Game restarted! Use growth tool to grow branches.');
     }
 }
