@@ -394,7 +394,7 @@ class Renderer {
         } else if (this.game.currentTool === 'growth') {
             this.ctx.fillText('growth tool: hover over nodes to see info, click to grow branches', textX, textY);
         } else if (this.game.currentTool === 'leaves') {
-            this.ctx.fillText('leaves tool: hover over nodes and click to add leaves to its branches', textX, textY);
+            this.ctx.fillText('flashcard tool: hover over nodes and click to create flashcards', textX, textY);
         } else if (this.game.currentTool === 'fruit') {
             this.ctx.fillText('bear fruit of labour: hover over flowers and click to transform them into apples', textX, textY);
         } else if (this.game.currentTool === 'flower') {

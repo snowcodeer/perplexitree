@@ -1,15 +1,24 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from perplexity import Perplexity
 from dotenv import load_dotenv
+from sqlalchemy.orm import Session
+from models import (
+    create_tables, get_db, GameSession, SearchResult, Branch, 
+    Leaf, Flashcard, Fruit, Flower
+)
 import os
 import json
+from datetime import datetime
 
 load_dotenv()
 app = FastAPI()
+
+# Initialize database
+create_tables()
 
 # Add CORS middleware
 app.add_middleware(
@@ -34,6 +43,26 @@ class SearchRequest(BaseModel):
 class WebSearchRequest(BaseModel):
     query: str
     count: int = 5
+
+class SaveGameStateRequest(BaseModel):
+    original_search_query: str
+    search_results: list
+    branches: list
+    leaves: list
+    fruits: list
+    flowers: list
+    flashcards: list = []
+    camera_offset: dict = {"x": 0.0, "y": 0.0}
+
+class LoadGameStateRequest(BaseModel):
+    session_id: int
+
+class CreateFlashcardsRequest(BaseModel):
+    branch_id: int
+    count: int = 5
+
+class DeleteGameStateRequest(BaseModel):
+    session_id: int
 
 @app.post("/api/search")
 async def search(request: SearchRequest):
@@ -108,7 +137,7 @@ async def search(request: SearchRequest):
         
         return {"query": request.query, "results": results, "structured_data": structured_data}
     except Exception as e:
-            return {"error": str(e), "query": request.query}
+        return {"error": str(e), "query": request.query}
 
 @app.post("/api/web-search")
 def web_search(request: WebSearchRequest):
@@ -138,6 +167,417 @@ def web_search(request: WebSearchRequest):
         return {"query": request.query, "results": results}
     except Exception as e:
         return {"error": str(e), "query": request.query}
+
+@app.post("/api/save-game-state")
+async def save_game_state(request: SaveGameStateRequest, db: Session = Depends(get_db)):
+    try:
+        # Create new game session
+        game_session = GameSession(
+            original_search_query=request.original_search_query,
+            camera_offset_x=request.camera_offset.get("x", 0.0) if request.camera_offset else 0.0,
+            camera_offset_y=request.camera_offset.get("y", 0.0) if request.camera_offset else 0.0,
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow()
+        )
+        db.add(game_session)
+        db.flush()  # Get the ID
+        
+        # Save search results
+        search_result_objects = []
+        for result in request.search_results:
+            search_result = SearchResult(
+                game_session_id=game_session.id,
+                title=result.get("title", ""),
+                url=result.get("url", ""),
+                snippet=result.get("snippet", ""),
+                llm_content=result.get("llm_content", ""),
+                search_query=result.get("search_query", ""),
+                created_at=datetime.utcnow()
+            )
+            db.add(search_result)
+            search_result_objects.append(search_result)
+        
+        db.flush()  # Get search result IDs
+        
+        # Save branches with hierarchy tracking
+        branch_objects = []
+        for i, branch_data in enumerate(request.branches):
+            search_result_id = None
+            
+            # Check if branch has its own search result data
+            if branch_data.get("searchResult"):
+                # Create a new search result for this branch
+                branch_search_result = SearchResult(
+                    game_session_id=game_session.id,
+                    title=branch_data["searchResult"].get("title", ""),
+                    url=branch_data["searchResult"].get("url", ""),
+                    snippet=branch_data["searchResult"].get("snippet", ""),
+                    llm_content=branch_data["searchResult"].get("llm_content", ""),
+                    search_query=branch_data["searchResult"].get("search_query", ""),
+                    created_at=datetime.utcnow()
+                )
+                db.add(branch_search_result)
+                db.flush()  # Get the ID
+                search_result_id = branch_search_result.id
+            elif i < len(search_result_objects):
+                # Fallback to index-based matching for initial branches
+                search_result_id = search_result_objects[i].id
+            else:
+                search_result_id = None
+            
+            branch = Branch(
+                game_session_id=game_session.id,
+                search_result_id=search_result_id,
+                parent_branch_id=branch_data.get("parentBranchId"),  # Track parent
+                start_x=branch_data.get("start", {}).get("x", 0),
+                start_y=branch_data.get("start", {}).get("y", 0),
+                end_x=branch_data.get("end", {}).get("x", 0),
+                end_y=branch_data.get("end", {}).get("y", 0),
+                length=branch_data.get("length", 0),
+                max_length=branch_data.get("maxLength", 0),
+                angle=branch_data.get("angle", 0),
+                thickness=branch_data.get("thickness", 1),
+                generation=branch_data.get("generation", 0),
+                is_growing=branch_data.get("isGrowing", False),
+                growth_speed=branch_data.get("growthSpeed", 1.0),
+                node_type=branch_data.get("nodeType", "branch"),
+                created_at=datetime.utcnow()
+            )
+            db.add(branch)
+            branch_objects.append(branch)
+        
+        db.flush()  # Get branch IDs
+        
+        # Save leaves
+        for leaf_data in request.leaves:
+            leaf = Leaf(
+                game_session_id=game_session.id,
+                branch_id=leaf_data.get("branchId", 1),  # Default to first branch
+                x=leaf_data.get("x", 0),
+                y=leaf_data.get("y", 0),
+                size=leaf_data.get("size", 1.0),
+                created_at=datetime.utcnow()
+            )
+            db.add(leaf)
+        
+        # Save fruits
+        for fruit_data in request.fruits:
+            fruit = Fruit(
+                game_session_id=game_session.id,
+                x=fruit_data.get("x", 0),
+                y=fruit_data.get("y", 0),
+                type=fruit_data.get("type", "apple"),
+                size=fruit_data.get("size", 1.0),
+                created_at=datetime.utcnow()
+            )
+            db.add(fruit)
+        
+        # Save flowers
+        for flower_data in request.flowers:
+            flower = Flower(
+                game_session_id=game_session.id,
+                x=flower_data.get("x", 0),
+                y=flower_data.get("y", 0),
+                type=flower_data.get("type", "🌸"),
+                size=flower_data.get("size", 1.0),
+                created_at=datetime.utcnow()
+            )
+            db.add(flower)
+        
+        db.commit()
+        
+        return {
+            "success": True,
+            "session_id": game_session.id,
+            "message": "Game state saved successfully"
+        }
+        
+    except Exception as e:
+        db.rollback()
+        return {"error": str(e), "success": False}
+
+@app.post("/api/load-game-state")
+async def load_game_state(request: LoadGameStateRequest, db: Session = Depends(get_db)):
+    try:
+        # Get game session
+        game_session = db.query(GameSession).filter(GameSession.id == request.session_id).first()
+        if not game_session:
+            raise HTTPException(status_code=404, detail="Game session not found")
+        
+        # Get all related data
+        search_results = db.query(SearchResult).filter(SearchResult.game_session_id == request.session_id).all()
+        branches = db.query(Branch).filter(Branch.game_session_id == request.session_id).all()
+        leaves = db.query(Leaf).filter(Leaf.game_session_id == request.session_id).all()
+        flashcards = db.query(Flashcard).filter(Flashcard.game_session_id == request.session_id).all()
+        fruits = db.query(Fruit).filter(Fruit.game_session_id == request.session_id).all()
+        flowers = db.query(Flower).filter(Flower.game_session_id == request.session_id).all()
+        
+        # Convert to dictionaries
+        search_results_data = []
+        for result in search_results:
+            search_results_data.append({
+                "id": result.id,
+                "title": result.title,
+                "url": result.url,
+                "snippet": result.snippet,
+                "llm_content": result.llm_content,
+                "search_query": result.search_query
+            })
+        
+        branches_data = []
+        for branch in branches:
+            branches_data.append({
+                "id": branch.id,
+                "start": {"x": branch.start_x, "y": branch.start_y},
+                "end": {"x": branch.end_x, "y": branch.end_y},
+                "length": branch.length,
+                "maxLength": branch.max_length,
+                "angle": branch.angle,
+                "thickness": branch.thickness,
+                "generation": branch.generation,
+                "isGrowing": branch.is_growing,
+                "growthSpeed": branch.growth_speed,
+                "nodeType": branch.node_type,
+                "parentBranchId": branch.parent_branch_id,
+                "searchResult": {
+                    "id": branch.search_result.id if branch.search_result else None,
+                    "title": branch.search_result.title if branch.search_result else None,
+                    "url": branch.search_result.url if branch.search_result else None,
+                    "snippet": branch.search_result.snippet if branch.search_result else None,
+                    "llm_content": branch.search_result.llm_content if branch.search_result else None
+                } if branch.search_result else None
+            })
+        
+        leaves_data = []
+        for leaf in leaves:
+            leaves_data.append({
+                "id": leaf.id,
+                "x": leaf.x,
+                "y": leaf.y,
+                "size": leaf.size,
+                "branchId": leaf.branch_id
+            })
+        
+        fruits_data = []
+        for fruit in fruits:
+            fruits_data.append({
+                "id": fruit.id,
+                "x": fruit.x,
+                "y": fruit.y,
+                "type": fruit.type,
+                "size": fruit.size
+            })
+        
+        flowers_data = []
+        for flower in flowers:
+            flowers_data.append({
+                "id": flower.id,
+                "x": flower.x,
+                "y": flower.y,
+                "type": flower.type,
+                "size": flower.size
+            })
+        
+        flashcards_data = []
+        for flashcard in flashcards:
+            flashcards_data.append({
+                "id": flashcard.id,
+                "branch_id": flashcard.branch_id,
+                "front": flashcard.front,
+                "back": flashcard.back,
+                "difficulty": flashcard.difficulty,
+                "category": flashcard.category,
+                "created_at": flashcard.created_at.isoformat(),
+                "last_reviewed": flashcard.last_reviewed.isoformat() if flashcard.last_reviewed else None,
+                "review_count": flashcard.review_count
+            })
+        
+        return {
+            "success": True,
+            "game_state": {
+                "original_search_query": game_session.original_search_query,
+                "search_results": search_results_data,
+                "branches": branches_data,
+                "leaves": leaves_data,
+                "flashcards": flashcards_data,
+                "fruits": fruits_data,
+                "flowers": flowers_data,
+                "camera_offset": {"x": game_session.camera_offset_x, "y": game_session.camera_offset_y},
+                "created_at": game_session.created_at.isoformat(),
+                "updated_at": game_session.updated_at.isoformat()
+            }
+        }
+        
+    except Exception as e:
+        return {"error": str(e), "success": False}
+
+@app.get("/api/game-sessions")
+async def get_game_sessions(db: Session = Depends(get_db)):
+    try:
+        sessions = db.query(GameSession).order_by(GameSession.updated_at.desc()).all()
+        sessions_data = []
+        for session in sessions:
+            sessions_data.append({
+                "id": session.id,
+                "original_search_query": session.original_search_query,
+                "created_at": session.created_at.isoformat(),
+                "updated_at": session.updated_at.isoformat()
+            })
+        return {"success": True, "sessions": sessions_data}
+    except Exception as e:
+        return {"error": str(e), "success": False}
+
+@app.post("/api/create-flashcards")
+async def create_flashcards(request: CreateFlashcardsRequest, db: Session = Depends(get_db)):
+    try:
+        # Get the branch and its search result
+        branch = db.query(Branch).filter(Branch.id == request.branch_id).first()
+        if not branch:
+            raise HTTPException(status_code=404, detail="Branch not found")
+        
+        if not branch.search_result:
+            raise HTTPException(status_code=400, detail="Branch has no search result data")
+        
+        # Use Perplexity to generate flashcards from the search result content
+        client = Perplexity()
+        
+        # Create a prompt to generate flashcards
+        flashcard_prompt = f"""
+        Based on the following content about "{branch.search_result.title}", create exactly {request.count} flashcards.
+        Each flashcard should have a clear question on the front and a detailed answer on the back.
+        Focus on key concepts, definitions, and important facts.
+        
+        Content: {branch.search_result.llm_content}
+        
+        Return the flashcards as a JSON array with this structure:
+        [
+            {{
+                "front": "Question or term",
+                "back": "Answer or definition",
+                "difficulty": "easy|medium|hard"
+            }}
+        ]
+        """
+        
+        # Define JSON schema for structured output
+        schema = {
+            "type": "object",
+            "properties": {
+                "flashcards": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "front": {"type": "string"},
+                            "back": {"type": "string"},
+                            "difficulty": {"type": "string", "enum": ["easy", "medium", "hard"]}
+                        },
+                        "required": ["front", "back", "difficulty"]
+                    },
+                    "minItems": request.count,
+                    "maxItems": request.count
+                }
+            },
+            "required": ["flashcards"]
+        }
+        
+        completion = client.chat.completions.create(
+            model="sonar-pro",
+            messages=[
+                {"role": "user", "content": flashcard_prompt}
+            ],
+            response_format={
+                "type": "json_schema",
+                "json_schema": {"schema": schema}
+            }
+        )
+        
+        # Parse the structured JSON response
+        response_content = completion.choices[0].message.content
+        try:
+            structured_data = json.loads(response_content)
+        except json.JSONDecodeError as e:
+            raise HTTPException(status_code=500, detail="Failed to parse flashcard data")
+        
+        # Create flashcards in database
+        created_flashcards = []
+        for flashcard_data in structured_data.get("flashcards", []):
+            flashcard = Flashcard(
+                game_session_id=branch.game_session_id,
+                branch_id=branch.id,
+                front=flashcard_data["front"],
+                back=flashcard_data["back"],
+                difficulty=flashcard_data["difficulty"],
+                category=branch.search_result.title,
+                created_at=datetime.utcnow()
+            )
+            db.add(flashcard)
+            created_flashcards.append({
+                "id": flashcard.id,
+                "front": flashcard.front,
+                "back": flashcard.back,
+                "difficulty": flashcard.difficulty,
+                "category": flashcard.category
+            })
+        
+        db.commit()
+        
+        return {
+            "success": True,
+            "flashcards": created_flashcards,
+            "message": f"Created {len(created_flashcards)} flashcards for {branch.search_result.title}"
+        }
+        
+    except Exception as e:
+        db.rollback()
+        return {"error": str(e), "success": False}
+
+@app.get("/api/flashcards/{branch_id}")
+async def get_flashcards(branch_id: int, db: Session = Depends(get_db)):
+    try:
+        flashcards = db.query(Flashcard).filter(Flashcard.branch_id == branch_id).all()
+        
+        flashcards_data = []
+        for flashcard in flashcards:
+            flashcards_data.append({
+                "id": flashcard.id,
+                "front": flashcard.front,
+                "back": flashcard.back,
+                "difficulty": flashcard.difficulty,
+                "category": flashcard.category,
+                "created_at": flashcard.created_at.isoformat(),
+                "last_reviewed": flashcard.last_reviewed.isoformat() if flashcard.last_reviewed else None,
+                "review_count": flashcard.review_count
+            })
+        
+        return {
+            "success": True,
+            "flashcards": flashcards_data
+        }
+        
+    except Exception as e:
+        return {"error": str(e), "success": False}
+
+@app.post("/api/delete-game-state")
+async def delete_game_state(request: DeleteGameStateRequest, db: Session = Depends(get_db)):
+    try:
+        # Get the game session
+        game_session = db.query(GameSession).filter(GameSession.id == request.session_id).first()
+        if not game_session:
+            raise HTTPException(status_code=404, detail="Game session not found")
+        
+        # Delete the game session (cascade will handle related records)
+        db.delete(game_session)
+        db.commit()
+        
+        return {
+            "success": True,
+            "message": f"Game session {request.session_id} deleted successfully"
+        }
+        
+    except Exception as e:
+        db.rollback()
+        return {"error": str(e), "success": False}
 
 if __name__ == "__main__":
     import uvicorn

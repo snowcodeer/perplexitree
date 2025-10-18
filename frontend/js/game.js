@@ -46,6 +46,8 @@ class UltraSimplePrune {
         this.searchResults = [];
         this.originalSearchQuery = null;
         this.usedSearchResults = new Set(); // Track used search result titles to avoid duplicates
+        this.currentSessionId = null; // Track current saved session ID
+        this.flashcards = []; // Store flashcards for current session
         
         this.init();
     }
@@ -187,7 +189,7 @@ class UltraSimplePrune {
         console.log('Tool set to:', tool);
     }
     
-    handleMouseDown(e) {
+    async handleMouseDown(e) {
         if (this.gameState !== 'playing') return;
         
         const rect = this.canvas.getBoundingClientRect();
@@ -207,10 +209,11 @@ class UltraSimplePrune {
         } else if (this.currentTool === 'leaves') {
             if (this.hoveredNode) {
                 console.log('Leaves tool: clicked on hovered node', this.hoveredNode);
-                this.growLeavesOnNode(this.hoveredNode);
+                // Create flashcards instead of visual leaves
+                await this.createFlashcardsForNode(this.hoveredNode);
             } else {
                 console.log('Leaves tool: no hovered node');
-                this.updateStatus('Hover over a node first, then click to add leaves!');
+                this.updateStatus('Hover over a node first, then click to create flashcards!');
             }
         } else if (this.currentTool === 'fruit') {
             if (this.hoveredNode) {
@@ -270,7 +273,7 @@ class UltraSimplePrune {
             }
             
             this.panStart = { ...this.mousePos };
-        } else if (this.currentTool === 'growth' || this.currentTool === 'leaves' || this.currentTool === 'fruit' || this.currentTool === 'flower' || this.currentTool === 'reposition' || this.currentTool === 'study') {
+        } else if (this.currentTool === 'growth' || this.currentTool === 'leaves' || this.currentTool === 'fruit' || this.currentTool === 'flower' || this.currentTool === 'reposition' || this.currentTool === 'study' || this.currentTool === 'cut') {
             this.hoveredNode = this.getNodeAtPosition(this.mousePos);
         } else if (this.currentTool === 'cut' && this.isDragging) {
             this.dragEnd = { ...this.mousePos };
@@ -941,12 +944,24 @@ class UltraSimplePrune {
     
     restartGame() {
         console.log('Restarting game...');
+        // Clear all game data
         this.tree.branches = [];
         this.tree.leaves = [];
         this.tree.fruits = [];
         this.tree.flowers = [];
-        this.gameState = 'playing';
-        this.updateStatus('Game restarted! Use growth tool to grow branches.');
+        this.searchResults = [];
+        this.originalSearchQuery = null;
+        this.usedSearchResults = new Set();
+        this.currentSessionId = null;
+        this.flashcards = [];
+        
+        // Reset game state to welcome
+        this.gameState = 'welcome';
+        this.panY = 0;
+        
+        // Show welcome prompt
+        this.showWelcomePrompt();
+        this.updateStatus('Game restarted! Enter a topic to begin learning.');
     }
     
     showStudyModal(searchResult) {
@@ -1093,6 +1108,337 @@ class UltraSimplePrune {
         }
         
         return uniqueResults;
+    }
+    
+    async createFlashcardsForNode(node) {
+        try {
+            // Find the branch that corresponds to this node
+            const branch = this.tree.branches.find(b => 
+                Math.abs(b.end.x - node.x) < 8 && Math.abs(b.end.y - node.y) < 8
+            );
+            
+            if (!branch || !branch.searchResult) {
+                this.updateStatus('No search data available for this node');
+                return;
+            }
+            
+            // Get the branch ID from the database (we'll need to track this)
+            // For now, we'll use a simple approach - find the branch in our saved data
+            const response = await fetch('http://localhost:8001/api/create-flashcards', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    branch_id: branch.id || 1, // Use branch ID if available
+                    count: 5
+                })
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                this.flashcards = [...this.flashcards, ...data.flashcards];
+                this.updateStatus(`Created ${data.flashcards.length} flashcards for ${branch.searchResult.title}`);
+                console.log('Flashcards created:', data.flashcards);
+                
+                // Show flashcards in a modal or tooltip
+                this.showFlashcards(data.flashcards, branch.searchResult.title);
+            } else {
+                console.error('Failed to create flashcards:', data.error);
+                this.updateStatus('Failed to create flashcards');
+            }
+            
+        } catch (error) {
+            console.error('Error creating flashcards:', error);
+            this.updateStatus('Error creating flashcards');
+        }
+    }
+    
+    showFlashcards(flashcards, topic) {
+        // Create a simple modal to display flashcards
+        const modal = document.createElement('div');
+        modal.className = 'flashcard-modal';
+        modal.style.cssText = `
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: #1a1a1a;
+            border: 2px solid #333;
+            border-radius: 10px;
+            padding: 20px;
+            max-width: 600px;
+            max-height: 80vh;
+            overflow-y: auto;
+            z-index: 1000;
+            color: white;
+        `;
+        
+        modal.innerHTML = `
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h3 style="margin: 0; color: #fff;">Flashcards: ${topic}</h3>
+                <button onclick="this.parentElement.parentElement.remove()" style="background: none; border: none; color: #fff; font-size: 20px; cursor: pointer;">×</button>
+            </div>
+            <div id="flashcards-container">
+                ${flashcards.map((card, index) => `
+                    <div class="flashcard" style="border: 1px solid #333; border-radius: 5px; margin: 10px 0; padding: 15px; background: #2a2a2a;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                            <span style="color: #3b82f6; font-weight: bold;">Card ${index + 1}</span>
+                            <span style="color: #666; font-size: 12px;">${card.difficulty}</span>
+                        </div>
+                        <div style="margin-bottom: 10px;">
+                            <strong style="color: #fff;">Q:</strong> ${card.front}
+                        </div>
+                        <div>
+                            <strong style="color: #fff;">A:</strong> ${card.back}
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+        `;
+        
+        document.body.appendChild(modal);
+        
+        // Close modal when clicking outside
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                modal.remove();
+            }
+        });
+    }
+    
+    async saveGameState() {
+        try {
+            // Check if we have a valid search query
+            if (!this.originalSearchQuery) {
+                this.updateStatus('No search query found. Please start a game first.');
+                return;
+            }
+            
+            // Prepare search results data
+            const searchResultsData = this.searchResults.map(result => ({
+                title: result.title,
+                url: result.url,
+                snippet: result.snippet,
+                llm_content: result.llm_content,
+                search_query: result.search_query || ""
+            }));
+            
+            // Prepare branches data with hierarchy
+            const branchesData = this.tree.branches.map(branch => ({
+                start: { x: branch.start.x, y: branch.start.y },
+                end: { x: branch.end.x, y: branch.end.y },
+                length: branch.length,
+                maxLength: branch.maxLength,
+                angle: branch.angle,
+                thickness: branch.thickness,
+                generation: branch.generation,
+                isGrowing: branch.isGrowing,
+                growthSpeed: branch.growthSpeed,
+                nodeType: branch.nodeType || "branch",
+                parentBranchId: branch.parentBranchId || null,
+                searchResult: branch.searchResult || null
+            }));
+            
+            // Prepare leaves data
+            const leavesData = this.tree.leaves.map(leaf => ({
+                x: leaf.x,
+                y: leaf.y,
+                size: leaf.size,
+                branchId: leaf.branchId || 1
+            }));
+            
+            // Prepare fruits data
+            const fruitsData = this.tree.fruits.map(fruit => ({
+                x: fruit.x,
+                y: fruit.y,
+                type: fruit.type,
+                size: fruit.size
+            }));
+            
+            // Prepare flowers data
+            const flowersData = this.tree.flowers.map(flower => ({
+                x: flower.x,
+                y: flower.y,
+                type: flower.type,
+                size: flower.size
+            }));
+            
+            // Prepare flashcards data
+            const flashcardsData = this.flashcards.map(flashcard => ({
+                branch_id: flashcard.branch_id,
+                front: flashcard.front,
+                back: flashcard.back,
+                difficulty: flashcard.difficulty,
+                category: flashcard.category
+            }));
+            
+            const response = await fetch('http://localhost:8001/api/save-game-state', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    original_search_query: this.originalSearchQuery,
+                    search_results: searchResultsData,
+                    branches: branchesData,
+                    leaves: leavesData,
+                    fruits: fruitsData,
+                    flowers: flowersData,
+                    flashcards: flashcardsData,
+                    camera_offset: this.cameraOffset
+                })
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                this.currentSessionId = data.session_id;
+                this.updateStatus(`Game state saved! Session ID: ${data.session_id}`);
+                console.log('Game state saved successfully:', data);
+            } else {
+                console.error('Failed to save game state:', data.error);
+                this.updateStatus('Failed to save game state');
+            }
+            
+        } catch (error) {
+            console.error('Error saving game state:', error);
+            this.updateStatus('Error saving game state');
+        }
+    }
+    
+    async loadGameState(sessionId) {
+        try {
+            const response = await fetch('http://localhost:8001/api/load-game-state', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ session_id: sessionId })
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                const gameState = data.game_state;
+                
+                // Restore original search query
+                this.originalSearchQuery = gameState.original_search_query;
+                
+                // Restore camera offset
+                if (gameState.camera_offset) {
+                    this.cameraOffset = gameState.camera_offset;
+                }
+                
+                // Restore search results
+                this.searchResults = gameState.search_results;
+                
+                // Clear existing tree elements
+                this.tree.branches = [];
+                this.tree.leaves = [];
+                this.tree.fruits = [];
+                this.tree.flowers = [];
+                
+                // Restore branches
+                gameState.branches.forEach(branchData => {
+                    const branch = {
+                        start: branchData.start,
+                        end: branchData.end,
+                        length: branchData.length,
+                        maxLength: branchData.maxLength,
+                        angle: branchData.angle,
+                        thickness: branchData.thickness,
+                        generation: branchData.generation,
+                        isGrowing: branchData.isGrowing,
+                        growthSpeed: branchData.growthSpeed,
+                        searchResult: branchData.searchResult
+                    };
+                    this.tree.branches.push(branch);
+                });
+                
+                // Restore leaves
+                gameState.leaves.forEach(leafData => {
+                    const leaf = {
+                        x: leafData.x,
+                        y: leafData.y,
+                        size: leafData.size,
+                        branchId: leafData.branchId
+                    };
+                    this.tree.leaves.push(leaf);
+                });
+                
+                // Restore fruits
+                gameState.fruits.forEach(fruitData => {
+                    const fruit = {
+                        x: fruitData.x,
+                        y: fruitData.y,
+                        type: fruitData.type,
+                        size: fruitData.size
+                    };
+                    this.tree.fruits.push(fruit);
+                });
+                
+                // Restore flowers
+                gameState.flowers.forEach(flowerData => {
+                    const flower = {
+                        x: flowerData.x,
+                        y: flowerData.y,
+                        type: flowerData.type,
+                        size: flowerData.size
+                    };
+                    this.tree.flowers.push(flower);
+                });
+                
+                this.currentSessionId = sessionId;
+                this.updateStatus(`Game state loaded! Query: ${this.originalSearchQuery}`);
+                console.log('Game state loaded successfully:', data);
+                
+            } else {
+                console.error('Failed to load game state:', data.error);
+                this.updateStatus('Failed to load game state');
+            }
+            
+        } catch (error) {
+            console.error('Error loading game state:', error);
+            this.updateStatus('Error loading game state');
+        }
+    }
+    
+    async getGameSessions() {
+        try {
+            const response = await fetch('http://localhost:8001/api/game-sessions');
+            const data = await response.json();
+            
+            if (data.success) {
+                return data.sessions;
+            } else {
+                console.error('Failed to get game sessions:', data.error);
+                return [];
+            }
+            
+        } catch (error) {
+            console.error('Error getting game sessions:', error);
+            return [];
+        }
+    }
+    
+    async deleteGameState(sessionId) {
+        try {
+            const response = await fetch('http://localhost:8001/api/delete-game-state', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ session_id: sessionId })
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                this.updateStatus(`Game session ${sessionId} deleted successfully`);
+                console.log('Game session deleted:', data);
+            } else {
+                console.error('Failed to delete game session:', data.error);
+                this.updateStatus('Failed to delete game session');
+            }
+            
+        } catch (error) {
+            console.error('Error deleting game session:', error);
+            this.updateStatus('Error deleting game session');
+        }
     }
     
     hideStudyModal() {

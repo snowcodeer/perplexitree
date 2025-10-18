@@ -18,6 +18,8 @@
     <div class="controls">
         <button id="restartBtn" title="restart game"><i class="fas fa-redo"></i></button>
         <button id="dayNightBtn" title="toggle day/night mode"><i class="fas fa-moon"></i></button>
+        <button id="saveBtn" title="save game state"><i class="fas fa-save"></i></button>
+        <button id="loadBtn" title="load game state"><i class="fas fa-folder-open"></i></button>
     </div>
     
     <div class="toolbar">
@@ -25,7 +27,7 @@
         <button id="studyTool" class="tool-btn" title="study tool - hover to see search results"><i class="fas fa-search"></i></button>
         <button id="growthTool" class="tool-btn active" title="growth tool - click on nodes to grow branches"><i class="fas fa-plus"></i></button>
         <button id="cutTool" class="tool-btn" title="cut tool - click and drag to prune branches"><i class="fas fa-cut"></i></button>
-        <button id="leavesTool" class="tool-btn" title="leaves tool - click on nodes to add leaves"><i class="fas fa-leaf"></i></button>
+        <button id="leavesTool" class="tool-btn" title="flashcard tool - click on nodes to create flashcards"><i class="fas fa-leaf"></i></button>
         <button id="flowerTool" class="tool-btn" title="blossom your knowledge - click on branch ends to add flowers"><i class="fas fa-seedling"></i></button>
         <button id="fruitTool" class="tool-btn" title="bear fruit of labour - click on flowers to transform them into apples"><i class="fas fa-apple-alt"></i></button>
         <button id="repositionTool" class="tool-btn" title="reposition tool - drag branch ends to move and resize"><i class="fas fa-edit"></i></button>
@@ -48,6 +50,24 @@
             </div>
         </div>
     </div>
+    
+    <!-- Modal for loading game sessions -->
+    <div id="loadModal" class="study-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Load Game Session</h3>
+                <div class="modal-controls">
+                    <button id="closeLoadModal" class="modal-btn" title="close">×</button>
+                </div>
+            </div>
+            <div class="modal-body">
+                <div id="sessionsList">
+                    <p>Loading sessions...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
     
     <!-- Game Scripts -->
     <script src="/static/js/game.js"></script>
