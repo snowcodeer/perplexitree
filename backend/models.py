@@ -1,8 +1,9 @@
 from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, ForeignKey, Float, Boolean
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
-from datetime import datetime
+from datetime import datetime, timezone
 import json
+import os
 
 Base = declarative_base()
 
@@ -13,8 +14,8 @@ class GameSession(Base):
     original_search_query = Column(String, nullable=False)
     camera_offset_x = Column(Float, default=0.0)
     camera_offset_y = Column(Float, default=0.0)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     
     # Relationships
     search_results = relationship("SearchResult", back_populates="game_session", cascade="all, delete-orphan")
@@ -34,7 +35,7 @@ class SearchResult(Base):
     snippet = Column(Text)
     llm_content = Column(Text)
     search_query = Column(String)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     
     # Relationships
     game_session = relationship("GameSession", back_populates="search_results")
@@ -62,7 +63,7 @@ class Branch(Base):
     growth_speed = Column(Float, default=1.0)
     node_type = Column(String, default="branch")  # "trunk", "branch", "end_node"
     
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     
     # Relationships
     game_session = relationship("GameSession", back_populates="branches")
@@ -78,12 +79,12 @@ class Leaf(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     game_session_id = Column(Integer, ForeignKey("game_sessions.id"), nullable=False)
-    branch_id = Column(Integer, ForeignKey("branches.id"), nullable=False)
+    branch_id = Column(Integer, ForeignKey("branches.id"), nullable=True)
     
     x = Column(Float, nullable=False)
     y = Column(Float, nullable=False)
     size = Column(Float, default=1.0)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     
     # Relationships
     game_session = relationship("GameSession", back_populates="leaves")
@@ -94,14 +95,16 @@ class Flashcard(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     game_session_id = Column(Integer, ForeignKey("game_sessions.id"), nullable=False)
-    branch_id = Column(Integer, ForeignKey("branches.id"), nullable=False)
+    branch_id = Column(Integer, ForeignKey("branches.id"), nullable=True)
     
     # Flashcard content
     front = Column(Text, nullable=False)  # Question or term
     back = Column(Text, nullable=False)   # Answer or definition
     difficulty = Column(String, default="medium")  # "easy", "medium", "hard"
     category = Column(String, nullable=True)  # Topic category
-    created_at = Column(DateTime, default=datetime.utcnow)
+    node_position_x = Column(Float, nullable=True)  # X coordinate of source node
+    node_position_y = Column(Float, nullable=True)  # Y coordinate of source node
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     last_reviewed = Column(DateTime, nullable=True)
     review_count = Column(Integer, default=0)
     
@@ -119,7 +122,7 @@ class Fruit(Base):
     y = Column(Float, nullable=False)
     type = Column(String, default="apple")
     size = Column(Float, default=1.0)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     
     # Relationships
     game_session = relationship("GameSession", back_populates="fruits")
@@ -134,19 +137,18 @@ class Flower(Base):
     y = Column(Float, nullable=False)
     type = Column(String, default="🌸")
     size = Column(Float, default=1.0)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     
     # Relationships
     game_session = relationship("GameSession", back_populates="flowers")
 
 # Database setup
-DATABASE_URL = "sqlite:///./perplexitree.db"
+DATABASE_URL = f"sqlite:///{os.path.join(os.path.dirname(__file__), '..', 'perplexitree.db')}"
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def create_tables():
-    # Drop all tables first, then recreate them
-    Base.metadata.drop_all(bind=engine)
+    # Only create tables if they don't exist (don't drop existing data)
     Base.metadata.create_all(bind=engine)
 
 def get_db():

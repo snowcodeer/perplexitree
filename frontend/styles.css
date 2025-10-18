@@ -384,8 +384,8 @@ body.day-mode .status {
     background: #1a1a1a;
     border: 1px solid #333;
     border-radius: 12px;
-    max-width: 500px;
-    width: 90%;
+    max-width: 800px;
+    width: 95%;
     max-height: 80vh;
     overflow: hidden;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);

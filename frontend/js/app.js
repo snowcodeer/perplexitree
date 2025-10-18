@@ -40,13 +40,7 @@ class PruneApp {
             });
         }
         
-        // Expand modal button
-        const expandBtn = document.getElementById('expandModal');
-        if (expandBtn) {
-            expandBtn.addEventListener('click', () => {
-                this.game.toggleModalExpansion();
-            });
-        }
+        // Flashcard button - handled dynamically in showStudyModal
         
         // Close modal when clicking outside
         const modal = document.getElementById('studyModal');
@@ -152,6 +146,18 @@ class PruneApp {
             // Refresh the load modal to show updated list
             await this.showLoadModal();
         }
+    }
+    
+    showAllFlashcards() {
+        this.game.showAllFlashcards();
+    }
+    
+    showDeckFlashcards(topic) {
+        this.game.showDeckFlashcards(topic);
+    }
+    
+    showDeckView() {
+        this.game.showDeckView();
     }
 }
 

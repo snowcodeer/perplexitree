@@ -26,11 +26,17 @@ class Renderer {
             this.renderHoveredNode();
         }
         
+        // Render highlighted node (from flashcard linking)
+        if (this.game.highlightedNode) {
+            this.renderHighlightedNode();
+        }
+        
         // Render tooltip for any tool when hovering over nodes with search results
         if (this.game.hoveredNode && this.game.hoveredNode.searchResult) {
             this.renderTooltip(this.game.hoveredNode.searchResult, this.game.hoveredNode.x, this.game.hoveredNode.y);
         }
         
+        // Render cut tool visual (inside camera transform)
         if (this.game.currentTool === 'cut' && this.game.isDragging && this.game.dragStart && this.game.dragEnd) {
             this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
             this.ctx.lineWidth = 3;
@@ -125,6 +131,9 @@ class Renderer {
     }
     
     renderLeaves() {
+        if (this.game.tree.leaves.length > 0) {
+            console.log('Rendering', this.game.tree.leaves.length, 'leaves');
+        }
         this.game.tree.leaves.forEach(leaf => {
             // Update leaf position based on current branch position (for growing branches)
             if (leaf.branch && leaf.t !== undefined) {
@@ -142,12 +151,12 @@ class Renderer {
             this.ctx.translate(leaf.x + swayX, leaf.y + swayY);
             this.ctx.rotate(leaf.angle + Math.sin(Date.now() * 0.003 + leaf.sway) * 0.1);
             
-            this.ctx.fillStyle = '#2d5016';
+            this.ctx.fillStyle = '#4a6741'; // Muted olive green - more subtle
             this.ctx.beginPath();
             this.ctx.ellipse(0, 0, leaf.size, leaf.size * 0.6, 0, 0, Math.PI * 2);
             this.ctx.fill();
             
-            this.ctx.strokeStyle = '#1a3009';
+            this.ctx.strokeStyle = '#2d3e2d'; // Darker olive for border
             this.ctx.lineWidth = 0.5;
             this.ctx.beginPath();
             this.ctx.moveTo(0, -leaf.size * 0.6);
@@ -232,6 +241,32 @@ class Renderer {
         this.ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
         this.ctx.beginPath();
         this.ctx.arc(this.game.hoveredNode.x, this.game.hoveredNode.y, 8, 0, Math.PI * 2);
+        this.ctx.fill();
+    }
+    
+    renderHighlightedNode() {
+        const node = this.game.highlightedNode;
+        const timeSinceHighlight = Date.now() - this.game.highlightStartTime;
+        const pulseDuration = 3000; // 3 seconds
+        const pulseProgress = (timeSinceHighlight % 1000) / 1000; // 1 second pulse cycle
+        
+        // Create pulsing effect with golden color
+        const alpha = 0.7 + 0.3 * Math.sin(pulseProgress * Math.PI * 2);
+        const radius = 12 + 4 * Math.sin(pulseProgress * Math.PI * 2);
+        
+        // Outer glow
+        this.ctx.shadowColor = '#FFD700';
+        this.ctx.shadowBlur = 20;
+        this.ctx.fillStyle = `rgba(255, 215, 0, ${alpha})`;
+        this.ctx.beginPath();
+        this.ctx.arc(node.end.x, node.end.y, radius, 0, Math.PI * 2);
+        this.ctx.fill();
+        
+        // Inner core
+        this.ctx.shadowBlur = 0;
+        this.ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+        this.ctx.beginPath();
+        this.ctx.arc(node.end.x, node.end.y, 6, 0, Math.PI * 2);
         this.ctx.fill();
     }
     

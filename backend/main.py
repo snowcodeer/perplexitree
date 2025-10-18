@@ -12,7 +12,8 @@ from models import (
 )
 import os
 import json
-from datetime import datetime
+from datetime import datetime, timezone
+from typing import Optional
 
 load_dotenv()
 app = FastAPI()
@@ -58,8 +59,10 @@ class LoadGameStateRequest(BaseModel):
     session_id: int
 
 class CreateFlashcardsRequest(BaseModel):
-    branch_id: int
+    branch_id: Optional[int] = None
     count: int = 5
+    search_result: Optional[dict] = None  # For frontend data
+    node_position: Optional[dict] = None  # Node position for linking back to tree
 
 class DeleteGameStateRequest(BaseModel):
     session_id: int
@@ -143,7 +146,7 @@ async def search(request: SearchRequest):
 def web_search(request: WebSearchRequest):
     try:
         client = Perplexity()
-        
+
         # Use basic search that works (images not supported in this SDK version)
         search = client.search.create(
             query=request.query,
@@ -176,8 +179,8 @@ async def save_game_state(request: SaveGameStateRequest, db: Session = Depends(g
             original_search_query=request.original_search_query,
             camera_offset_x=request.camera_offset.get("x", 0.0) if request.camera_offset else 0.0,
             camera_offset_y=request.camera_offset.get("y", 0.0) if request.camera_offset else 0.0,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow()
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc)
         )
         db.add(game_session)
         db.flush()  # Get the ID
@@ -192,7 +195,7 @@ async def save_game_state(request: SaveGameStateRequest, db: Session = Depends(g
                 snippet=result.get("snippet", ""),
                 llm_content=result.get("llm_content", ""),
                 search_query=result.get("search_query", ""),
-                created_at=datetime.utcnow()
+                created_at=datetime.now(timezone.utc)
             )
             db.add(search_result)
             search_result_objects.append(search_result)
@@ -214,7 +217,7 @@ async def save_game_state(request: SaveGameStateRequest, db: Session = Depends(g
                     snippet=branch_data["searchResult"].get("snippet", ""),
                     llm_content=branch_data["searchResult"].get("llm_content", ""),
                     search_query=branch_data["searchResult"].get("search_query", ""),
-                    created_at=datetime.utcnow()
+                    created_at=datetime.now(timezone.utc)
                 )
                 db.add(branch_search_result)
                 db.flush()  # Get the ID
@@ -241,7 +244,7 @@ async def save_game_state(request: SaveGameStateRequest, db: Session = Depends(g
                 is_growing=branch_data.get("isGrowing", False),
                 growth_speed=branch_data.get("growthSpeed", 1.0),
                 node_type=branch_data.get("nodeType", "branch"),
-                created_at=datetime.utcnow()
+                created_at=datetime.now(timezone.utc)
             )
             db.add(branch)
             branch_objects.append(branch)
@@ -252,11 +255,11 @@ async def save_game_state(request: SaveGameStateRequest, db: Session = Depends(g
         for leaf_data in request.leaves:
             leaf = Leaf(
                 game_session_id=game_session.id,
-                branch_id=leaf_data.get("branchId", 1),  # Default to first branch
+                branch_id=leaf_data.get("branchId"),  # Can be None now
                 x=leaf_data.get("x", 0),
                 y=leaf_data.get("y", 0),
                 size=leaf_data.get("size", 1.0),
-                created_at=datetime.utcnow()
+                created_at=datetime.now(timezone.utc)
             )
             db.add(leaf)
         
@@ -268,7 +271,7 @@ async def save_game_state(request: SaveGameStateRequest, db: Session = Depends(g
                 y=fruit_data.get("y", 0),
                 type=fruit_data.get("type", "apple"),
                 size=fruit_data.get("size", 1.0),
-                created_at=datetime.utcnow()
+                created_at=datetime.now(timezone.utc)
             )
             db.add(fruit)
         
@@ -280,9 +283,26 @@ async def save_game_state(request: SaveGameStateRequest, db: Session = Depends(g
                 y=flower_data.get("y", 0),
                 type=flower_data.get("type", "🌸"),
                 size=flower_data.get("size", 1.0),
-                created_at=datetime.utcnow()
+                created_at=datetime.now(timezone.utc)
             )
             db.add(flower)
+        
+        # Save flashcards
+        for flashcard_data in request.flashcards:
+            # Extract node position if available
+            node_position = flashcard_data.get("node_position", {})
+            flashcard = Flashcard(
+                game_session_id=game_session.id,
+                branch_id=flashcard_data.get("branch_id"),
+                front=flashcard_data.get("front", ""),
+                back=flashcard_data.get("back", ""),
+                difficulty=flashcard_data.get("difficulty", "medium"),
+                category=flashcard_data.get("category", ""),
+                node_position_x=node_position.get("x"),
+                node_position_y=node_position.get("y"),
+                created_at=datetime.now(timezone.utc)
+            )
+            db.add(flashcard)
         
         db.commit()
         
@@ -387,6 +407,10 @@ async def load_game_state(request: LoadGameStateRequest, db: Session = Depends(g
                 "back": flashcard.back,
                 "difficulty": flashcard.difficulty,
                 "category": flashcard.category,
+                "node_position": {
+                    "x": flashcard.node_position_x,
+                    "y": flashcard.node_position_y
+                } if flashcard.node_position_x is not None and flashcard.node_position_y is not None else None,
                 "created_at": flashcard.created_at.isoformat(),
                 "last_reviewed": flashcard.last_reviewed.isoformat() if flashcard.last_reviewed else None,
                 "review_count": flashcard.review_count
@@ -427,27 +451,42 @@ async def get_game_sessions(db: Session = Depends(get_db)):
     except Exception as e:
         return {"error": str(e), "success": False}
 
+# Removed extra endpoint - using existing /api/create-flashcards endpoint
+
 @app.post("/api/create-flashcards")
 async def create_flashcards(request: CreateFlashcardsRequest, db: Session = Depends(get_db)):
     try:
-        # Get the branch and its search result
-        branch = db.query(Branch).filter(Branch.id == request.branch_id).first()
-        if not branch:
-            raise HTTPException(status_code=404, detail="Branch not found")
-        
-        if not branch.search_result:
-            raise HTTPException(status_code=400, detail="Branch has no search result data")
+        # Handle both database branches and frontend data
+        if request.branch_id:
+            # Database branch approach
+            branch = db.query(Branch).filter(Branch.id == request.branch_id).first()
+            if not branch:
+                raise HTTPException(status_code=404, detail="Branch not found")
+            
+            if not branch.search_result:
+                raise HTTPException(status_code=400, detail="Branch has no search result data")
+            
+            search_result_data = {
+                "title": branch.search_result.title,
+                "llm_content": branch.search_result.llm_content,
+                "snippet": branch.search_result.snippet
+            }
+        elif request.search_result:
+            # Frontend data approach
+            search_result_data = request.search_result
+        else:
+            raise HTTPException(status_code=400, detail="Either branch_id or search_result must be provided")
         
         # Use Perplexity to generate flashcards from the search result content
         client = Perplexity()
         
         # Create a prompt to generate flashcards
         flashcard_prompt = f"""
-        Based on the following content about "{branch.search_result.title}", create exactly {request.count} flashcards.
+        Based on the following content about "{search_result_data.get('title', 'Unknown Topic')}", create exactly {request.count} flashcards.
         Each flashcard should have a clear question on the front and a detailed answer on the back.
         Focus on key concepts, definitions, and important facts.
         
-        Content: {branch.search_result.llm_content}
+        Content: {search_result_data.get('llm_content', search_result_data.get('snippet', ''))}
         
         Return the flashcards as a JSON array with this structure:
         [
@@ -499,33 +538,47 @@ async def create_flashcards(request: CreateFlashcardsRequest, db: Session = Depe
         except json.JSONDecodeError as e:
             raise HTTPException(status_code=500, detail="Failed to parse flashcard data")
         
-        # Create flashcards in database
+        # Create flashcards
         created_flashcards = []
         for flashcard_data in structured_data.get("flashcards", []):
-            flashcard = Flashcard(
-                game_session_id=branch.game_session_id,
-                branch_id=branch.id,
-                front=flashcard_data["front"],
-                back=flashcard_data["back"],
-                difficulty=flashcard_data["difficulty"],
-                category=branch.search_result.title,
-                created_at=datetime.utcnow()
-            )
-            db.add(flashcard)
-            created_flashcards.append({
-                "id": flashcard.id,
-                "front": flashcard.front,
-                "back": flashcard.back,
-                "difficulty": flashcard.difficulty,
-                "category": flashcard.category
-            })
+            if request.branch_id:
+                # Save to database for database branches
+                flashcard = Flashcard(
+                    game_session_id=branch.game_session_id,
+                    branch_id=branch.id,
+                    front=flashcard_data["front"],
+                    back=flashcard_data["back"],
+                    difficulty=flashcard_data["difficulty"],
+                    category=branch.search_result.title,
+                    created_at=datetime.now(timezone.utc)
+                )
+                db.add(flashcard)
+                created_flashcards.append({
+                    "id": flashcard.id,
+                    "front": flashcard.front,
+                    "back": flashcard.back,
+                    "difficulty": flashcard.difficulty,
+                    "category": flashcard.category
+                })
+            else:
+                # Return data for frontend (not saved to database yet)
+                # Use search result title for categorization (individual topic, not root topic)
+                category = search_result_data.get('title', 'Unknown Topic')
+                created_flashcards.append({
+                    "front": flashcard_data["front"],
+                    "back": flashcard_data["back"],
+                    "difficulty": flashcard_data["difficulty"],
+                    "category": category,
+                    "node_position": request.node_position  # Include node position for linking
+                })
         
-        db.commit()
+        if request.branch_id:
+            db.commit()
         
         return {
             "success": True,
             "flashcards": created_flashcards,
-            "message": f"Created {len(created_flashcards)} flashcards for {branch.search_result.title}"
+            "message": f"Created {len(created_flashcards)} flashcards for {search_result_data.get('title', 'Unknown Topic')}"
         }
         
     except Exception as e:
