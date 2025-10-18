@@ -11,10 +11,20 @@ class PruneApp {
     init() {
         console.log('Initializing Prune Game App...');
         
+        // Initialize managers first
+        this.uiManager = new UIManager(null); // Will be set after game is created
+        this.flashcardManager = new FlashcardManager(null); // Will be set after game is created
+        
         // Initialize game systems
         this.game = new UltraSimplePrune();
         this.renderer = new Renderer(this.game);
         this.pruningSystem = new PruningSystem(this.game);
+        
+        // Set managers in game instance and update their game references
+        this.game.uiManager = this.uiManager;
+        this.game.flashcardManager = this.flashcardManager;
+        this.uiManager.game = this.game;
+        this.flashcardManager.game = this.game;
         
         // Override the game's performPruning method to use our pruning system
         this.game.performPruning = () => this.pruningSystem.performPruning();
@@ -36,7 +46,7 @@ class PruneApp {
         const closeBtn = document.getElementById('closeModal');
         if (closeBtn) {
             closeBtn.addEventListener('click', () => {
-                this.game.hideStudyModal();
+                this.uiManager.hideStudyModal();
             });
         }
         
@@ -47,7 +57,7 @@ class PruneApp {
         if (modal) {
             modal.addEventListener('click', (e) => {
                 if (e.target === modal) {
-                    this.game.hideStudyModal();
+                    this.uiManager.hideStudyModal();
                 }
             });
         }
@@ -55,7 +65,7 @@ class PruneApp {
         // Close modal with Escape key
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {
-                this.game.hideStudyModal();
+                this.uiManager.hideStudyModal();
             }
         });
     }
@@ -157,15 +167,15 @@ class PruneApp {
     }
     
     showAllFlashcards() {
-        this.game.showAllFlashcards();
+        this.uiManager.showAllFlashcards();
     }
     
     showDeckFlashcards(topic) {
-        this.game.showDeckFlashcards(topic);
+        this.flashcardManager.showDeckFlashcards(topic);
     }
     
     showDeckView() {
-        this.game.showDeckView();
+        this.uiManager.showDeckView();
     }
     
     restartGame() {
