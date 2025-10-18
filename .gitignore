@@ -8,7 +8,9 @@ __pycache__/
 venv/
 
 # Vercel
-.vercel
+.vercel/
+vercel.json
+api/
 
 # Documentation
 ARCHITECTURE.md

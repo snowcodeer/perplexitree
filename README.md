@@ -1,10 +1,10 @@
-# PerplexTree - AI-Powered Knowledge Tree Game
+# perplexitree - AI-Powered Knowledge Tree Game
 
 A beautiful, interactive web game that combines the meditative puzzle mechanics of "Prune" with AI-powered knowledge exploration. Players grow knowledge trees by pruning branches while leveraging the Perplexity API to discover unique, real-time information on any topic. Each growth session returns fresh, non-redundant search results to build comprehensive understanding.
 
 ## Project Summary
 
-**Purpose**: PerplexTree transforms learning into an engaging, visual experience where users cultivate knowledge trees through strategic pruning and AI-enhanced exploration. The game addresses information overload by presenting unique, curated insights through an intuitive tree metaphor.
+**Purpose**: perplexitree transforms learning into an engaging, visual experience where users cultivate knowledge trees through strategic pruning and AI-enhanced exploration. The game addresses information overload by presenting unique, curated insights through an intuitive tree metaphor.
 
 **Technical Approach**: Built with a modular architecture featuring FastAPI backend and vanilla JavaScript frontend, the application integrates Perplexity's real-time search capabilities to generate unique knowledge areas for each growth session. The system ensures non-redundant information retrieval through intelligent query generation and structured output parsing.
 
@@ -99,7 +99,7 @@ PERPLEXITY_API_KEY=your_perplexity_api_key_here
 
 ### Written Summary 📝
 
-**PerplexTree** transforms learning into an engaging visual experience by combining puzzle mechanics with AI-powered knowledge exploration. Players cultivate knowledge trees through strategic pruning while leveraging Perplexity's real-time search capabilities.
+**perplexitree** transforms learning into an engaging visual experience by combining puzzle mechanics with AI-powered knowledge exploration. Players cultivate knowledge trees through strategic pruning while leveraging Perplexity's real-time search capabilities.
 
 **Technical Approach**: Built with FastAPI backend and vanilla JavaScript frontend, the application uses a two-phase Perplexity integration: initial queries use the `sonar-pro` chat completion model for structured knowledge area generation, while subsequent growth uses the search model with negative prompting to ensure unique web results.
 
