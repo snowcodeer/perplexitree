@@ -36,7 +36,7 @@ class Renderer {
             this.renderTooltip(this.game.hoveredNode.searchResult, this.game.hoveredNode.x, this.game.hoveredNode.y);
         }
         
-        // Render cut tool visual (inside camera transform)
+        // Render cut tool visual (inside camera transform, like it was before)
         if (this.game.currentTool === 'cut' && this.game.isDragging && this.game.dragStart && this.game.dragEnd) {
             this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
             this.ctx.lineWidth = 3;

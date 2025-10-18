@@ -157,7 +157,12 @@ class UltraSimplePrune {
     startGame() {
         console.log('Starting game...');
         this.gameState = 'playing';
-        this.startWelcomeSequence();
+        
+        // Only show welcome sequence if there are no branches (new game)
+        if (this.tree.branches.length === 0) {
+            this.startWelcomeSequence();
+        }
+        
         this.loadLeavesFromSavedData();
     }
     
@@ -1197,6 +1202,7 @@ class UltraSimplePrune {
         };
             
             console.log('CACHE BUSTED: Sending flashcard request with data:', flashcardData);
+            console.log('Node position being stored:', { x: nodeX, y: nodeY });
             
             const response = await fetch('http://localhost:8001/api/create-flashcards', {
                 method: 'POST',
@@ -1741,15 +1747,15 @@ class UltraSimplePrune {
         console.log('Available branches:', this.tree.branches.length);
         console.log('Branch positions:', this.tree.branches.map(b => ({ x: b.end.x, y: b.end.y })));
         
-        // Find the node at the given position
+        // Find the node at the given position (increased tolerance)
         const targetNode = this.tree.branches.find(branch => 
-            Math.abs(branch.end.x - nodePosition.x) < 5 && 
-            Math.abs(branch.end.y - nodePosition.y) < 5
+            Math.abs(branch.end.x - nodePosition.x) < 20 && 
+            Math.abs(branch.end.y - nodePosition.y) < 20
         );
         
         if (!targetNode) {
             console.warn('No node found at position:', nodePosition);
-            console.log('Tried to find node within 5 pixels of:', nodePosition);
+            console.log('Tried to find node within 20 pixels of:', nodePosition);
             this.updateStatus('Source node not found on tree');
             return;
         }
