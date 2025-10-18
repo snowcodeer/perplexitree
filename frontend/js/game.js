@@ -45,6 +45,7 @@ class UltraSimplePrune {
         // Search results storage
         this.searchResults = [];
         this.originalSearchQuery = null;
+        this.usedSearchResults = new Set(); // Track used search result titles to avoid duplicates
         
         this.init();
     }
@@ -360,14 +361,14 @@ class UltraSimplePrune {
         const trunkPoint = { x: this.tree.x, y: this.tree.y - this.tree.trunkHeight };
         
         if (Math.abs(adjustedPos.x - trunkPoint.x) < 8 && Math.abs(adjustedPos.y - trunkPoint.y) < 8) {
-            // For study tool, return the trunk with original search query
-            if (this.currentTool === 'study' && this.originalSearchQuery) {
+            // For any tool, return the trunk with original search query if available
+            if (this.originalSearchQuery) {
                 return { 
                     x: trunkPoint.x, 
                     y: trunkPoint.y, 
                     searchResult: {
                         title: this.originalSearchQuery,
-                        snippet: `Your original search topic: ${this.originalSearchQuery}`,
+                        snippet: this.originalSearchQuery, // Just the title for tooltip
                         llm_content: `This is your main topic: ${this.originalSearchQuery}. The branches below represent the 5 primary areas within this field.`
                     }
                 };
@@ -387,9 +388,9 @@ class UltraSimplePrune {
         for (let branch of this.tree.branches) {
             if (branch.length >= branch.maxLength) {
                 if (Math.abs(adjustedPos.x - branch.end.x) < 8 && Math.abs(adjustedPos.y - branch.end.y) < 8) {
-                    // For study tool, return the branch object so we can access searchResult
-                    if (this.currentTool === 'study' && branch.searchResult) {
-                        console.log('Study tool found branch with search result:', branch.searchResult);
+                    // For any tool, return the branch object so we can access searchResult
+                    if (branch.searchResult) {
+                        console.log('Tool found branch with search result:', branch.searchResult);
                         return { x: branch.end.x, y: branch.end.y, searchResult: branch.searchResult };
                     }
                     return { x: branch.end.x, y: branch.end.y };
@@ -427,9 +428,15 @@ class UltraSimplePrune {
             // Normal growth - random number of branches
             const branchCount = 3 + Math.floor(Math.random() * 3);
             
+            // Create branches first
+            const newBranches = [];
             for (let i = 0; i < branchCount; i++) {
-                this.addBranchFromNode(node);
+                const branch = this.addBranchFromNode(node);
+                newBranches.push(branch);
             }
+            
+            // Trigger web search for the new branches
+            this.triggerWebSearchForBranches(this.hoveredNode, newBranches);
             
             this.updateStatus(`Grew ${branchCount} branches from node!`);
         }
@@ -516,6 +523,7 @@ class UltraSimplePrune {
         };
         
         this.tree.branches.push(branch);
+        return branch;
     }
     
     calculateBranchThicknessFromParent(startPoint) {
@@ -949,15 +957,142 @@ class UltraSimplePrune {
         if (modal && title && description) {
             title.textContent = this.toProperCase(searchResult.title);
             const content = searchResult.snippet || searchResult.llm_content || 'No description available';
-            description.textContent = this.toProperCase(content);
+            
+            // Create formatted content
+            let formattedContent = this.formatContent(this.toProperCase(content));
+            
+            // Add clickable link to the source URL at the top only if it's a web search result (has a real URL)
+            if (searchResult.url && searchResult.url.startsWith('http')) {
+                const sourceLink = `<p><a href="${searchResult.url}" target="_blank" style="color: #3b82f6; text-decoration: underline; font-weight: 500;">Read more at source →</a></p>`;
+                formattedContent = sourceLink + formattedContent;
+            }
+            
+            description.innerHTML = formattedContent;
             modal.classList.add('show');
         }
     }
     
+    formatContent(text) {
+        if (!text) return 'No description available';
+        
+        // Convert markdown-style bold (**text**) to HTML bold
+        let formatted = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+        
+        // Convert URLs to clickable links
+        const urlRegex = /(https?:\/\/[^\s]+)/g;
+        formatted = formatted.replace(urlRegex, '<a href="$1" target="_blank" style="color: #3b82f6; text-decoration: underline;">$1</a>');
+        
+        // Handle paragraph breaks - split on double newlines, periods followed by space and capital letter, or long sentences
+        let paragraphs = formatted.split(/\n\s*\n/).filter(p => p.trim().length > 0);
+        
+        // If no double newlines, try splitting on sentence boundaries for very long text
+        if (paragraphs.length === 1 && formatted.length > 200) {
+            paragraphs = formatted.split(/\.\s+(?=[A-Z])/).filter(p => p.trim().length > 0);
+        }
+        
+        // Wrap each paragraph in <p> tags
+        if (paragraphs.length > 1) {
+            formatted = paragraphs.map(p => `<p>${p.trim()}</p>`).join('');
+        } else {
+            // Single paragraph, just wrap it
+            formatted = `<p>${formatted.trim()}</p>`;
+        }
+        
+        return formatted;
+    }
+    
     toProperCase(str) {
+        if (!str) return str;
         return str.replace(/\w\S*/g, (txt) => {
             return txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase();
         });
+    }
+    
+    async triggerWebSearchForBranches(parentNode, newBranches) {
+        // Get the search topic from the parent node
+        let searchTopic = this.originalSearchQuery; // Default to original query
+        
+        // If parent node has a search result, use that as the topic
+        if (parentNode && parentNode.searchResult) {
+            searchTopic = parentNode.searchResult.title;
+        }
+        
+        if (!searchTopic) {
+            console.log('No search topic available for web search');
+            return;
+        }
+        
+        // Use "deep research on" with "in the context of"
+        const researchQuery = `deep research on ${searchTopic} in the context of ${this.originalSearchQuery}`;
+        
+        console.log(`Triggering web search for ${newBranches.length} branches with query: ${researchQuery}`);
+        
+        try {
+            let allResults = [];
+            let attempts = 0;
+            const maxAttempts = 10; // Prevent infinite loops
+            
+            // Keep searching until we have enough unique results for all branches
+            while (allResults.length < newBranches.length && attempts < maxAttempts) {
+                const response = await fetch('http://localhost:8001/api/web-search', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        query: researchQuery,
+                        count: Math.max(5, newBranches.length - allResults.length + 2) // Get extra results to account for duplicates
+                    })
+                });
+                
+                const data = await response.json();
+                console.log(`Search attempt ${attempts + 1} results:`, data);
+                
+                if (data.results && data.results.length > 0) {
+                    // Filter out duplicates and add to our collection
+                    const uniqueResults = this.filterDuplicateResults(data.results);
+                    allResults = this.filterDuplicateResults([...allResults, ...uniqueResults]);
+                    console.log(`Total unique results so far: ${allResults.length}`);
+                }
+                
+                attempts++;
+            }
+            
+            console.log('Final unique results:', allResults);
+            
+            // Assign results to branches
+            newBranches.forEach((branch, index) => {
+                if (allResults[index]) {
+                    branch.searchResult = allResults[index];
+                    this.usedSearchResults.add(allResults[index].title.toLowerCase());
+                    console.log(`Assigned search result to branch ${index}:`, allResults[index].title);
+                } else {
+                    console.warn(`No search result available for branch ${index}`);
+                }
+            });
+            
+            const assignedCount = Math.min(allResults.length, newBranches.length);
+            this.updateStatus(`Found ${assignedCount} unique web search results for new branches!`);
+            
+        } catch (error) {
+            console.error('Web search error:', error);
+            this.updateStatus('Web search failed. Branches created without search results.');
+        }
+    }
+    
+    filterDuplicateResults(results) {
+        const uniqueResults = [];
+        const seenTitles = new Set();
+        
+        for (const result of results) {
+            const titleLower = result.title.toLowerCase();
+            
+            // Skip if we've seen this title before or if it's already been used
+            if (!seenTitles.has(titleLower) && !this.usedSearchResults.has(titleLower)) {
+                uniqueResults.push(result);
+                seenTitles.add(titleLower);
+            }
+        }
+        
+        return uniqueResults;
     }
     
     hideStudyModal() {

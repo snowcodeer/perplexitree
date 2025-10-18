@@ -26,8 +26,8 @@ class Renderer {
             this.renderHoveredNode();
         }
         
-        // Render tooltip for study tool
-        if (this.game.currentTool === 'study' && this.game.hoveredNode && this.game.hoveredNode.searchResult) {
+        // Render tooltip for any tool when hovering over nodes with search results
+        if (this.game.hoveredNode && this.game.hoveredNode.searchResult) {
             this.renderTooltip(this.game.hoveredNode.searchResult, this.game.hoveredNode.x, this.game.hoveredNode.y);
         }
         
@@ -277,11 +277,40 @@ class Renderer {
         this.ctx.lineTo(tooltipX + tooltipWidth, tooltipY + 40);
         this.ctx.stroke();
         
-        // Draw title (proper case)
+        // Draw title (proper case) with line wrapping and truncation
         this.ctx.fillStyle = '#ffffff';
         this.ctx.font = 'bold 14px "JetBrains Mono", monospace';
         const title = this.toProperCase(searchResult.title);
-        this.ctx.fillText(title, tooltipX + padding, tooltipY + 25);
+        const maxTitleWidth = tooltipWidth - (padding * 2);
+        
+        // Check if title fits on one line
+        const titleWidth = this.ctx.measureText(title).width;
+        let titleUsedTwoLines = false;
+        
+        if (titleWidth <= maxTitleWidth) {
+            // Title fits on one line
+            this.ctx.fillText(title, tooltipX + padding, tooltipY + 25);
+        } else {
+            // Try to fit on two lines
+            const words = title.split(' ');
+            const midPoint = Math.ceil(words.length / 2);
+            const firstLine = words.slice(0, midPoint).join(' ');
+            const secondLine = words.slice(midPoint).join(' ');
+            
+            const firstLineWidth = this.ctx.measureText(firstLine).width;
+            const secondLineWidth = this.ctx.measureText(secondLine).width;
+            
+            if (firstLineWidth <= maxTitleWidth && secondLineWidth <= maxTitleWidth) {
+                // Both lines fit
+                this.ctx.fillText(firstLine, tooltipX + padding, tooltipY + 20);
+                this.ctx.fillText(secondLine, tooltipX + padding, tooltipY + 35);
+                titleUsedTwoLines = true;
+            } else {
+                // Truncate with ellipses
+                const truncatedTitle = this.truncateText(title, maxTitleWidth);
+                this.ctx.fillText(truncatedTitle, tooltipX + padding, tooltipY + 25);
+            }
+        }
         
         // Draw description (proper case)
         this.ctx.fillStyle = '#ccc';
@@ -291,17 +320,23 @@ class Renderer {
         // Wrap text to fit in tooltip
         const maxWidth = tooltipWidth - (padding * 2);
         const lines = this.wrapText(description, maxWidth);
-        let lineY = tooltipY + 60;
+        
+        // Adjust description position based on title length
+        let lineY = tooltipY + (titleUsedTwoLines ? 70 : 60);
         
         lines.slice(0, 3).forEach(line => { // Show max 3 lines
             this.ctx.fillText(line, tooltipX + padding, lineY);
             lineY += 15;
         });
         
-        // Draw click instruction
+        // Draw click instruction based on current tool
         this.ctx.fillStyle = '#3b82f6';
         this.ctx.font = '11px "JetBrains Mono", monospace';
-        this.ctx.fillText('Click to expand', tooltipX + padding, tooltipY + tooltipHeight - 8);
+        if (this.game.currentTool === 'study') {
+            this.ctx.fillText('Click to expand', tooltipX + padding, tooltipY + tooltipHeight - 8);
+        } else {
+            this.ctx.fillText('Use study tool to expand', tooltipX + padding, tooltipY + tooltipHeight - 8);
+        }
     }
     
     toProperCase(str) {
@@ -329,6 +364,22 @@ class Renderer {
         return lines;
     }
     
+    truncateText(text, maxWidth) {
+        const ellipses = '...';
+        const ellipsesWidth = this.ctx.measureText(ellipses).width;
+        
+        if (this.ctx.measureText(text).width <= maxWidth) {
+            return text;
+        }
+        
+        let truncated = text;
+        while (this.ctx.measureText(truncated + ellipses).width > maxWidth && truncated.length > 0) {
+            truncated = truncated.slice(0, -1);
+        }
+        
+        return truncated + ellipses;
+    }
+    
     renderUI() {
         // Keep text color consistent - it's rendered over the black soil
         this.ctx.fillStyle = '#ecf0f1'; // Light text that shows well over dark soil
@@ -341,7 +392,7 @@ class Renderer {
         if (this.game.currentTool === 'pan') {
             this.ctx.fillText('pan tool: drag to move around the view', textX, textY);
         } else if (this.game.currentTool === 'growth') {
-            this.ctx.fillText('growth tool: hover over nodes and click to grow branches', textX, textY);
+            this.ctx.fillText('growth tool: hover over nodes to see info, click to grow branches', textX, textY);
         } else if (this.game.currentTool === 'leaves') {
             this.ctx.fillText('leaves tool: hover over nodes and click to add leaves to its branches', textX, textY);
         } else if (this.game.currentTool === 'fruit') {

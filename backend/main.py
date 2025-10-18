@@ -31,6 +31,10 @@ async def serve_game():
 class SearchRequest(BaseModel):
     query: str
 
+class WebSearchRequest(BaseModel):
+    query: str
+    count: int = 5
+
 @app.post("/api/search")
 async def search(request: SearchRequest):
     try:
@@ -103,6 +107,35 @@ async def search(request: SearchRequest):
                 })
         
         return {"query": request.query, "results": results, "structured_data": structured_data}
+    except Exception as e:
+            return {"error": str(e), "query": request.query}
+
+@app.post("/api/web-search")
+def web_search(request: WebSearchRequest):
+    try:
+        client = Perplexity()
+        
+        # Use basic search that works (images not supported in this SDK version)
+        search = client.search.create(
+            query=request.query,
+            max_results=request.count,
+            max_tokens_per_page=1024
+        )
+        
+        # Format results to match the expected structure
+        results = []
+        for i, result in enumerate(search.results):
+            results.append({
+                "id": i,
+                "title": result.title,
+                "url": result.url,
+                "date": "2024-01-01",  # Perplexity search doesn't provide dates
+                "snippet": result.snippet if hasattr(result, 'snippet') else "No description available",
+                "llm_content": result.snippet if hasattr(result, 'snippet') else "No description available",
+                "images": []  # Images not supported in this SDK version
+            })
+        
+        return {"query": request.query, "results": results}
     except Exception as e:
         return {"error": str(e), "query": request.query}
 
