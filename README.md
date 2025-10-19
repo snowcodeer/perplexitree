@@ -83,22 +83,52 @@ Create a `.env` file in the `backend/` directory:
 ```
 PERPLEXITY_API_KEY=your_perplexity_api_key_here
 ```
+## Technical Implementation
 
-## API Endpoints
+### Architecture
+- **Backend**: FastAPI server with SQLite database
+- **Frontend**: Vanilla JavaScript with HTML5 Canvas rendering
+- **AI Integration**: Perplexity API for real-time knowledge generation
 
-- `POST /api/search` - Generate knowledge areas for tree growth
-- `POST /api/web-search` - Search for specific topics with negative prompting
-- `POST /api/game/save` - Save game state
-- `GET /api/game/load/{session_id}` - Load game state
-- `POST /api/flashcards/create` - Generate flashcards from search results
+### Key API Endpoints
 
-## Technical Details
+**`POST /api/search`** - Initial Knowledge Tree Creation
+- Uses Perplexity `sonar-pro` with structured JSON output
+- Generates exactly 5 unique knowledge areas from user query
 
-**Architecture**: FastAPI backend with vanilla JavaScript frontend, SQLite database, and Perplexity AI integration.
+**`POST /api/web-search`** - Branch Growth with Negative Prompting
+- **Key Feature**: Uses negative prompting to exclude existing results
+- Ensures each growth session returns fresh, non-redundant information
+- Constructs queries like: `"machine learning -"existing result 1" -"existing result 2"`
 
-**Key Technologies**: Python 3.8+, FastAPI, SQLAlchemy, Perplexity API, HTML5 Canvas, vanilla JavaScript.
+**`POST /api/save-game-state`** - Public Game Storage
+- Saves complete game state (public saves - all games are shareable)
+- Stores branches, search results, flashcards, and visual elements
 
-**Performance**: 60 FPS rendering, efficient collision detection, optimized canvas operations.
+**`POST /api/create-flashcards`** - AI Study Material Generation
+- Uses Perplexity to create flashcards from search content
+- Links flashcards to specific tree nodes with difficulty ratings
+
+### Perplexity API Integration
+
+#### Two-Phase Approach
+1. **Initial Search**: `sonar-pro` chat completion for structured knowledge areas
+2. **Subsequent Growth**: Search API with negative prompting for unique results
+
+#### Negative Prompting Strategy
+- **Purpose**: Prevents redundant information across growth sessions
+- **Implementation**: Excludes existing search result titles and snippets
+- **Result**: Each branch growth returns fresh, unique content
+
+### Database Design
+- **Relational Model**: GameSession → SearchResult → Branch hierarchy
+- **Public Access**: All saved games are publicly accessible
+- **Cascade Deletion**: Automatic cleanup when sessions are deleted
+
+### Key Technologies
+**Backend**: FastAPI, SQLAlchemy, Perplexity API  
+**Frontend**: HTML5 Canvas, Vanilla JavaScript  
+**Database**: SQLite with relational modeling
 
 ## License
 
