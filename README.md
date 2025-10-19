@@ -102,4 +102,4 @@ PERPLEXITY_API_KEY=your_perplexity_api_key_here
 
 ## License
 
-Created for Perplexity Hackathon. Original Prune game owned by Joel McDonald.
+Created for Perplexity Hackathon. Tree growth/prune mechanic inspired by Prune game by Joel McDonald.
