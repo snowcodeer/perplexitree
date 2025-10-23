@@ -6,9 +6,6 @@ class UltraSimplePrune {
         this.canvas = document.getElementById('gameCanvas');
         this.ctx = this.canvas.getContext('2d');
         
-        // API configuration
-        this.apiBaseUrl = this.getApiBaseUrl();
-        
         // Game state
         this.gameState = 'initialized';
         this.currentTool = 'growth';
@@ -54,16 +51,6 @@ class UltraSimplePrune {
         this.isLoadingGame = false; // Flag to track when loading a saved game
         
         this.init();
-    }
-    
-    getApiBaseUrl() {
-        // Check if we're in development (localhost) or production
-        if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-            return 'http://localhost:8001';
-        } else {
-            // For production, use the current domain
-            return window.location.origin;
-        }
     }
     
     init() {
@@ -1190,7 +1177,7 @@ class UltraSimplePrune {
         console.log('Fetching search results for:', userInput);
         this.originalSearchQuery = userInput; // Store the original search query
         try {
-            const response = await fetch(`${this.apiBaseUrl}/api/search`, {
+            const response = await fetch('http://localhost:8001/api/search', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ query: userInput })
@@ -1396,7 +1383,7 @@ class UltraSimplePrune {
                 // Build negative prompts from existing results
                 const currentNegativePrompts = allResults.map(result => result.title);
                 
-                const response = await fetch(`${this.apiBaseUrl}/api/web-search`, {
+                const response = await fetch('http://localhost:8001/api/web-search', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ 
@@ -1505,7 +1492,7 @@ class UltraSimplePrune {
             console.log('CACHE BUSTED: Sending flashcard request with data:', flashcardData);
             console.log('Node position being stored:', { x: nodeX, y: nodeY });
             
-            const response = await fetch(`${this.apiBaseUrl}/api/create-flashcards`, {
+            const response = await fetch('http://localhost:8001/api/create-flashcards', {
                 method: 'POST',
                 headers: { 
                     'Content-Type': 'application/json',
@@ -2283,7 +2270,7 @@ class UltraSimplePrune {
             
             console.log('Saving game state with data:', saveData);
             
-            const response = await fetch(`${this.apiBaseUrl}/api/save-game-state`, {
+            const response = await fetch('http://localhost:8001/api/save-game-state', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(saveData)
@@ -2329,7 +2316,7 @@ class UltraSimplePrune {
                 promptBox.remove();
             }
             
-            const response = await fetch(`${this.apiBaseUrl}/api/load-game-state`, {
+            const response = await fetch('http://localhost:8001/api/load-game-state', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ session_id: sessionId })
@@ -2530,7 +2517,7 @@ class UltraSimplePrune {
     
     async getGameSessions() {
         try {
-            const response = await fetch(`${this.apiBaseUrl}/api/game-sessions`);
+            const response = await fetch('http://localhost:8001/api/game-sessions');
             const data = await response.json();
             
             if (data.success) {
@@ -2548,7 +2535,7 @@ class UltraSimplePrune {
     
     async deleteGameState(sessionId) {
         try {
-            const response = await fetch(`${this.apiBaseUrl}/api/delete-game-state`, {
+            const response = await fetch('http://localhost:8001/api/delete-game-state', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ session_id: sessionId })
