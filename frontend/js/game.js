@@ -42,22 +42,18 @@ class UltraSimplePrune {
         this.lastTime = 0;
         this.branchCount = 0;
         
-        // Welcome sequence state
-        this.welcomeSequence = {
-            isActive: false,
-            hasShownPrompt: false,
-            targetPanY: 0,
-            originalPanY: 0,
-            animationSpeed: 2
-        };
-        
-        // Search results storage
-        this.searchResults = [];
-        this.originalSearchQuery = null;
-        this.usedSearchResults = new Set(); // Track used search result titles to avoid duplicates
+        // Search / session state
         this.currentSessionId = null; // Track current saved session ID
-        this.flashcards = []; // Store flashcards for current session
         this.isLoadingGame = false; // Flag to track when loading a saved game
+
+        this.highlightedNode = null;
+        this.highlightStartTime = null;
+        this.highlightTimeout = null;
+
+        this.flashcardManager = new FlashcardManager(this, API_BASE_URL);
+        this.quizManager = new QuizManager(this, this.flashcardManager, API_BASE_URL);
+        this.searchManager = new SearchManager(this, API_BASE_URL);
+        this.welcomeManager = new WelcomeManager(this, this.searchManager);
         
         this.init();
     }
@@ -191,7 +187,7 @@ class UltraSimplePrune {
         
         // Only show welcome sequence if there are no branches AND we're not loading a game
         if (this.tree.branches.length === 0 && !this.isLoadingGame) {
-        this.startWelcomeSequence();
+            this.welcomeManager.startSequence();
         }
         
         this.loadLeavesFromSavedData();
@@ -257,7 +253,7 @@ class UltraSimplePrune {
             if (this.hoveredNode) {
                 console.log('Leaves tool: clicked on hovered node', this.hoveredNode);
                 // Create flashcards AND visual leaves
-                await this.createFlashcardsForNode(this.hoveredNode);
+                await this.flashcardManager.createFlashcardsForNode(this.hoveredNode);
             } else {
                 console.log('Leaves tool: no hovered node');
                 this.updateStatus('Hover over a node first, then click to create flashcards!');
@@ -420,15 +416,15 @@ class UltraSimplePrune {
         const trunkPoint = { x: this.tree.x, y: this.tree.y - this.tree.trunkHeight };
         
         if (Math.abs(adjustedPos.x - trunkPoint.x) < 8 && Math.abs(adjustedPos.y - trunkPoint.y) < 8) {
-            // For any tool, return the trunk with original search query if available
-            if (this.originalSearchQuery) {
-                return { 
-                    x: trunkPoint.x, 
-                    y: trunkPoint.y, 
+            const originalQuery = this.searchManager.getOriginalQuery();
+            if (originalQuery) {
+                return {
+                    x: trunkPoint.x,
+                    y: trunkPoint.y,
                     searchResult: {
-                        title: this.originalSearchQuery,
-                        snippet: this.originalSearchQuery, // Just the title for tooltip
-                        llm_content: `This is your main topic: ${this.originalSearchQuery}. The branches below represent the 5 primary areas within this field.`
+                        title: originalQuery,
+                        snippet: originalQuery,
+                        llm_content: `This is your main topic: ${originalQuery}. The branches below represent the 5 primary areas within this field.`
                     }
                 };
             }
@@ -504,7 +500,7 @@ class UltraSimplePrune {
             }
             
             // Trigger web search for the new branches
-            this.triggerWebSearchForBranches(this.hoveredNode, newBranches);
+            this.searchManager.assignResultsToBranches(node, newBranches);
             
             this.updateStatus(`Grew ${branchCount} branches from node!`);
         }
@@ -546,23 +542,8 @@ class UltraSimplePrune {
         }
         
         // Assign search results to the 5 initial branches (FIRST 5 NODES HAVE NO SOURCE LINKS)
-        console.log('Assigning search results to branches. Search results:', this.searchResults);
-        console.log('Available branches:', this.tree.branches.length);
-        if (this.searchResults && this.searchResults.length > 0) {
-            const lastFiveBranches = this.tree.branches.slice(-5);
-            console.log('Last 5 branches:', lastFiveBranches);
-            lastFiveBranches.forEach((branch, index) => {
-                if (this.searchResults[index]) {
-                    // Remove URL from first 5 search results (no source links for initial topics)
-                    const searchResult = { ...this.searchResults[index] };
-                    delete searchResult.url;
-                    branch.searchResult = searchResult;
-                    console.log(`Assigned search result ${index} to branch (NO URL):`, branch.searchResult);
-                }
-            });
-        } else {
-            console.log('No search results available to assign');
-        }
+        const lastFiveBranches = this.tree.branches.slice(-5);
+        this.searchManager.assignInitialResults(lastFiveBranches);
         
         this.updateStatus(`Grew ${branchCount} branches from trunk!`);
     }
@@ -719,211 +700,34 @@ class UltraSimplePrune {
             return;
         }
         
-        const fruit = node.fruit;
-        
         // Get flashcards for this session to create a quiz
-        if (this.flashcards.length === 0) {
+        if (!this.flashcardManager.hasFlashcards()) {
             this.updateStatus('No flashcards available for quiz! Create some flashcards first.');
             return;
         }
         
         // Create a quiz from the flashcards
-        await this.createQuizFromFlashcards();
+        await this.quizManager.startQuizFromFlashcards();
     }
     
     async createQuizFromFlashcards() {
-        try {
-            // Select 5 random flashcards for the quiz
-            const quizFlashcards = this.getRandomFlashcards(5);
-            
-            if (quizFlashcards.length === 0) {
-                this.updateStatus('No flashcards available for quiz!');
-                return;
-            }
-            
-            // Create multiple choice questions from flashcards
-            const quizQuestions = await this.generateMultipleChoiceQuestions(quizFlashcards);
-            
-            // Show the quiz modal
-            this.showQuizModal(quizQuestions);
-            
-        } catch (error) {
-            console.error('Error creating quiz:', error);
-            this.updateStatus('Error creating quiz. Please try again.');
-        }
+        return this.quizManager.startQuizFromFlashcards();
     }
     
     getRandomFlashcards(count) {
-        const shuffled = [...this.flashcards].sort(() => 0.5 - Math.random());
-        return shuffled.slice(0, Math.min(count, this.flashcards.length));
+        return this.flashcardManager.getRandomFlashcards(count);
     }
     
     async generateMultipleChoiceQuestions(flashcards) {
-        try {
-            // Use AI to generate quiz questions based on the flashcards
-            const response = await fetch(`${API_BASE_URL}/api/generate-quiz`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    flashcards: flashcards
-                })
-            });
-            
-            if (!response.ok) {
-                throw new Error('Failed to generate quiz');
-            }
-            
-            const data = await response.json();
-            return data.questions || [];
-            
-        } catch (error) {
-            console.error('Error generating AI quiz:', error);
-            // Fallback to simple shuffling if AI fails
-            return this.generateSimpleQuestions(flashcards);
-        }
+        return this.quizManager.generateMultipleChoiceQuestions(flashcards);
     }
     
     generateSimpleQuestions(flashcards) {
-        const questions = [];
-        
-        for (const flashcard of flashcards) {
-            // Create a multiple choice question from the flashcard
-            const question = {
-                question: flashcard.front,
-                correctAnswer: flashcard.back,
-                options: [flashcard.back]
-            };
-            
-            // Add 3 wrong answers from other flashcards
-            const otherFlashcards = this.flashcards.filter(f => f !== flashcard);
-            const wrongAnswers = this.getRandomFlashcards(3).map(f => f.back);
-            
-            // Remove duplicates and ensure we have 4 options
-            const allOptions = [...new Set([...question.options, ...wrongAnswers])];
-            question.options = allOptions.slice(0, 4);
-            
-            // Shuffle the options
-            question.options = question.options.sort(() => 0.5 - Math.random());
-            
-            questions.push(question);
-        }
-        
-        return questions;
+        return this.quizManager.generateSimpleQuestions(flashcards);
     }
     
     showQuizModal(questions) {
-        const modal = document.getElementById('quizModal');
-        const questionElement = document.getElementById('quizQuestion');
-        const optionsElement = document.getElementById('quizOptions');
-        const resultElement = document.getElementById('quizResult');
-        const scoreElement = document.getElementById('quizScore');
-        
-        // Reset modal state
-        resultElement.style.display = 'none';
-        scoreElement.style.display = 'none';
-        
-        let currentQuestionIndex = 0;
-        let score = 0;
-        let selectedAnswer = null;
-        
-        const showQuestion = () => {
-            if (currentQuestionIndex >= questions.length) {
-                // Quiz completed
-                showScore();
-                return;
-            }
-            
-            const question = questions[currentQuestionIndex];
-            questionElement.textContent = `Question ${currentQuestionIndex + 1}: ${question.question}`;
-            
-            optionsElement.innerHTML = '';
-            question.options.forEach((option, index) => {
-                const optionElement = document.createElement('div');
-                optionElement.className = 'quiz-option';
-                optionElement.textContent = option;
-                optionElement.addEventListener('click', () => selectAnswer(option, optionElement));
-                optionsElement.appendChild(optionElement);
-            });
-        };
-        
-        const selectAnswer = (answer, element) => {
-            // Remove previous selection
-            optionsElement.querySelectorAll('.quiz-option').forEach(opt => {
-                opt.classList.remove('selected');
-            });
-            
-            // Add selection to clicked option
-            element.classList.add('selected');
-            selectedAnswer = answer;
-            
-            // Show result after a short delay
-            setTimeout(() => {
-                showResult();
-            }, 500);
-        };
-        
-        const showResult = () => {
-            const question = questions[currentQuestionIndex];
-            const isCorrect = selectedAnswer === question.correctAnswer;
-            
-            if (isCorrect) {
-                score++;
-            }
-            
-            // Highlight correct and incorrect answers
-            optionsElement.querySelectorAll('.quiz-option').forEach(opt => {
-                if (opt.textContent === question.correctAnswer) {
-                    opt.classList.add('correct');
-                } else if (opt.textContent === selectedAnswer && !isCorrect) {
-                    opt.classList.add('incorrect');
-                }
-            });
-            
-            // Show result message
-            resultElement.textContent = isCorrect ? 'Correct! 🎉' : `Incorrect. The correct answer is: ${question.correctAnswer}`;
-            resultElement.className = `quiz-result ${isCorrect ? 'correct' : 'incorrect'}`;
-            resultElement.style.display = 'block';
-            
-            // Move to next question after delay
-            setTimeout(() => {
-                currentQuestionIndex++;
-                showQuestion();
-            }, 2000);
-        };
-        
-        const showScore = () => {
-            questionElement.textContent = 'Quiz Complete!';
-            optionsElement.innerHTML = '';
-            resultElement.style.display = 'none';
-            
-            const percentage = Math.round((score / questions.length) * 100);
-            scoreElement.innerHTML = `
-                <div>Your Score: ${score}/${questions.length}</div>
-                <div>Percentage: ${percentage}%</div>
-                <div>${percentage >= 80 ? 'Excellent! 🌟' : percentage >= 60 ? 'Good job! 👍' : 'Keep studying! 📚'}</div>
-            `;
-            scoreElement.style.display = 'block';
-        };
-        
-        // Show first question
-        showQuestion();
-        
-        // Show modal
-        modal.style.display = 'flex';
-        
-        // Close modal event listener
-        document.getElementById('closeQuizModal').onclick = () => {
-            modal.style.display = 'none';
-        };
-        
-        // Close modal when clicking outside
-        modal.onclick = (e) => {
-            if (e.target === modal) {
-                modal.style.display = 'none';
-            }
-        };
+        return this.quizManager.showQuizModal(questions);
     }
     
     growFlowerOnNode(node) {
@@ -1093,171 +897,12 @@ class UltraSimplePrune {
         }
     }
     
-    startWelcomeSequence() {
-        this.welcomeSequence.isActive = true;
-        this.welcomeSequence.hasShownPrompt = false;
-        this.welcomeSequence.originalPanY = this.cameraOffset.y;
-        // Pan up higher so dirt covers about 60% of screen (show more dirt below)
-        this.welcomeSequence.targetPanY = -this.height * 0.6;
-        
-        // Start panning up
-        this.animateWelcomePan();
-    }
-    
-    animateWelcomePan() {
-        if (!this.welcomeSequence.isActive) return;
-        
-        const currentY = this.cameraOffset.y;
-        const targetY = this.welcomeSequence.targetPanY;
-        const diff = targetY - currentY;
-        
-        if (Math.abs(diff) > 1) {
-            // Continue panning
-            this.cameraOffset.y += diff * 0.05; // Smooth animation
-            requestAnimationFrame(() => this.animateWelcomePan());
-        } else {
-            // Reached target, show prompt
-            this.cameraOffset.y = targetY;
-            this.showWelcomePrompt();
-        }
-    }
-    
-    showWelcomePrompt() {
-        if (this.welcomeSequence.hasShownPrompt) return;
-        
-        this.welcomeSequence.hasShownPrompt = true;
-        
-        // Create prompt box
-        const promptBox = document.createElement('div');
-        promptBox.id = 'welcomePrompt';
-        promptBox.innerHTML = `
-            <div class="welcome-prompt-content">
-                <h2>Welcome to the root of your knowledge</h2>
-                <div class="welcome-prompt-input">
-                    <input type="text" id="welcomeInput" placeholder="What would you like to learn?" autofocus>
-                    <button id="welcomeSubmit">Enter</button>
-                </div>
-            </div>
-        `;
-        
-        // Append to canvas container for proper positioning
-        const canvasContainer = this.canvas.parentElement;
-        canvasContainer.appendChild(promptBox);
-        
-        // Focus input and handle events
-        const input = document.getElementById('welcomeInput');
-        const submitBtn = document.getElementById('welcomeSubmit');
-        
-        const handleSubmit = async () => {
-            const userInput = input.value.trim();
-            await this.dismissWelcomePrompt(userInput);
-        };
-        
-        input.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                handleSubmit();
-            }
-        });
-        
-        submitBtn.addEventListener('click', handleSubmit);
-        
-        // Auto-focus
-        setTimeout(() => input.focus(), 100);
-    }
-    
-    async dismissWelcomePrompt(userInput) {
-        // Remove prompt box
-        const promptBox = document.getElementById('welcomePrompt');
-        if (promptBox) {
-            promptBox.remove();
-        }
-        
-        // Pan back up to original position immediately
-        this.welcomeSequence.targetPanY = this.welcomeSequence.originalPanY;
-        this.animateWelcomePanBack();
-        
-        // Call API with user input and wait for results, then grow
-        if (userInput) {
-            await this.fetchSearchResults(userInput);
-        }
-    }
-    
-    async fetchSearchResults(userInput) {
-        console.log('Fetching search results for:', userInput);
-        this.originalSearchQuery = userInput; // Store the original search query
-        try {
-            const response = await fetch(`${API_BASE_URL}/api/search`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ query: userInput })
-            });
-            
-            console.log('API response status:', response.status);
-            const data = await response.json();
-            console.log('API response data:', data);
-            
-            if (data.results) {
-                this.searchResults = data.results;
-                console.log('Search results stored:', this.searchResults);
-                this.updateStatus(`Found ${data.results.length} topics! Use study tool to explore.`);
-                
-                // Now trigger the first growth with search results
-                this.triggerFirstGrowth();
-            }
-        } catch (error) {
-            console.error('Search error:', error);
-            this.updateStatus('Search failed. Please try again.');
-        }
-    }
-    
-    animateWelcomePanBack() {
-        const currentY = this.cameraOffset.y;
-        const targetY = this.welcomeSequence.targetPanY;
-        const diff = targetY - currentY;
-        
-        if (Math.abs(diff) > 1) {
-            // Continue panning back up
-            this.cameraOffset.y += diff * 0.05; // Smooth animation
-            requestAnimationFrame(() => this.animateWelcomePanBack());
-        } else {
-            // Reached original position, mark sequence as complete
-            this.cameraOffset.y = targetY;
-            this.welcomeSequence.isActive = false;
-            // Don't trigger growth here - wait for search results
-        }
-    }
-    
     triggerFirstGrowth() {
         // Trigger growth from the trunk (first node) - same as clicking the first node
         const trunkNode = { x: this.tree.x, y: this.tree.y - this.tree.trunkHeight };
-        console.log('Triggering first growth, search results:', this.searchResults);
+        console.log('Triggering first growth, search results:', this.searchManager.getInitialResults());
         this.growBranchesFromNode(trunkNode);
         this.updateStatus('Tree ready! Use growth tool to grow branches, cut tool to prune them.');
-    }
-    
-    restartGame() {
-        console.log('Restarting game...');
-        // Clear all game data
-        this.tree.branches = [];
-        this.tree.leaves = [];
-        this.tree.fruits = [];
-        this.tree.flowers = [];
-        this.searchResults = [];
-        this.originalSearchQuery = null;
-        this.usedSearchResults = new Set();
-        this.currentSessionId = null;
-        this.flashcards = [];
-        
-        // Reset game state to welcome
-        this.gameState = 'welcome';
-        this.panY = 0;
-        
-        // Show welcome prompt
-        this.showWelcomePrompt();
-        this.updateStatus('Game restarted! Enter a topic to begin learning.');
-        
-        // Update the flashcard deck display
-        this.updateFlashcardDeck();
     }
     
     showStudyModal(searchResult) {
@@ -1277,15 +922,13 @@ class UltraSimplePrune {
             description.innerHTML = formattedContent;
             
             // Show/hide flashcard button based on whether flashcards exist for this topic
-            if (flashcardBtn) {
-                const topicFlashcards = this.flashcards.filter(card => 
-                    card.category === searchResult.title
-                );
+            if (flashcardBtn && this.flashcardManager) {
+                const topicFlashcards = this.flashcardManager.getFlashcardsForTopic(searchResult.title);
                 
                 if (topicFlashcards.length > 0) {
                     flashcardBtn.style.display = 'block';
                     flashcardBtn.onclick = () => {
-                        this.showFlashcardsForTopic(searchResult.title);
+                        this.flashcardManager.showFlashcardsForTopic(searchResult.title);
                     };
                 } else {
                     flashcardBtn.style.display = 'none';
@@ -1309,21 +952,11 @@ class UltraSimplePrune {
     }
     
     showFlashcardsForTopic(topic) {
-        // Find flashcards for this specific topic
-        const topicFlashcards = this.flashcards.filter(card => 
-            card.category === topic
-        );
-        
-        if (topicFlashcards.length === 0) {
-            this.updateStatus('No flashcards found for this topic');
+        if (!this.flashcardManager) {
             return;
         }
-        
-        // Close the study modal first
         this.hideStudyModal();
-        
-        // Show the flashcards for this topic
-        this.showFlashcards(topicFlashcards, topic);
+        this.flashcardManager.showFlashcardsForTopic(topic);
     }
     
     formatContent(text) {
@@ -1355,270 +988,23 @@ class UltraSimplePrune {
         return formatted;
     }
     
-    toProperCase(str) {
-        if (!str) return str;
-        return str.replace(/\w\S*/g, (txt) => {
-            return txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase();
-        });
-    }
-    
-    async triggerWebSearchForBranches(parentNode, newBranches) {
-        // Get the search topic from the parent node
-        let searchTopic = this.originalSearchQuery; // Default to original query
-        
-        // If parent node has a search result, use that as the topic
-        if (parentNode && parentNode.searchResult) {
-            searchTopic = parentNode.searchResult.title;
-        }
-        
-        if (!searchTopic) {
-            console.log('No search topic available for web search');
-            return;
-        }
-        
-        // Use "deep research on" with "in the context of"
-        const researchQuery = `deep research on ${searchTopic} in the context of ${this.originalSearchQuery}`;
-        
-        console.log(`Triggering web search for ${newBranches.length} branches with query: ${researchQuery}`);
-        
-        try {
-            let allResults = [];
-            let attempts = 0;
-            const maxAttempts = 10; // Prevent infinite loops
-            let negativePrompts = []; // Track existing search results to exclude
-            
-            // Keep searching until we have enough unique results for all branches
-            while (allResults.length < newBranches.length && attempts < maxAttempts) {
-                // Build negative prompts from existing results
-                const currentNegativePrompts = allResults.map(result => result.title);
-                
-                const response = await fetch(`${API_BASE_URL}/api/web-search`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ 
-                        query: researchQuery,
-                        count: Math.max(5, newBranches.length - allResults.length + 2), // Get extra results to account for duplicates
-                        negative_prompts: currentNegativePrompts
-                    })
-                });
-                
-                const data = await response.json();
-                console.log(`Search attempt ${attempts + 1} results:`, data);
-                console.log(`Using negative prompts:`, currentNegativePrompts);
-                
-                if (data.results && data.results.length > 0) {
-                    // Filter out duplicates and add to our collection
-                    const uniqueResults = this.filterDuplicateResults(data.results);
-                    allResults = this.filterDuplicateResults([...allResults, ...uniqueResults]);
-                    console.log(`Total unique results so far: ${allResults.length}`);
-                }
-                
-                attempts++;
-            }
-            
-            console.log('Final unique results:', allResults);
-            
-            // Assign results to branches
-            newBranches.forEach((branch, index) => {
-                if (allResults[index]) {
-                    branch.searchResult = allResults[index];
-                    this.usedSearchResults.add(allResults[index].title.toLowerCase());
-                    console.log(`Assigned search result to branch ${index}:`, allResults[index].title);
-                } else {
-                    console.warn(`No search result available for branch ${index}`);
-                }
-            });
-            
-            const assignedCount = Math.min(allResults.length, newBranches.length);
-            if (attempts > 1) {
-                this.updateStatus(`Found ${assignedCount} unique web search results after ${attempts} attempts with negative prompts!`);
-            } else {
-                this.updateStatus(`Found ${assignedCount} unique web search results for new branches!`);
-            }
-            
-        } catch (error) {
-            console.error('Web search error:', error);
-            this.updateStatus('Web search failed. Branches created without search results.');
-        }
-    }
-    
-    filterDuplicateResults(results) {
-        const uniqueResults = [];
-        const seenTitles = new Set();
-        
-        for (const result of results) {
-            const titleLower = result.title.toLowerCase();
-            
-            // Skip if we've seen this title before or if it's already been used
-            if (!seenTitles.has(titleLower) && !this.usedSearchResults.has(titleLower)) {
-                uniqueResults.push(result);
-                seenTitles.add(titleLower);
-            }
-        }
-        
-        return uniqueResults;
-    }
-    
     async createFlashcardsForNode(node) {
-        try {
-            // Find the branch that corresponds to this node
-            const branch = this.tree.branches.find(b => 
-                Math.abs(b.end.x - node.x) < 8 && Math.abs(b.end.y - node.y) < 8
-            );
-            
-            if (!branch || !branch.searchResult) {
-                this.updateStatus('No search data available for this node');
-                return;
-            }
-            
-            console.log('Branch search result:', branch.searchResult);
-            
-            // Validate search result data
-            if (!branch.searchResult.title || (!branch.searchResult.llm_content && !branch.searchResult.snippet)) {
-                this.updateStatus('Insufficient search data for flashcard creation');
-                console.error('Invalid search result data:', branch.searchResult);
-                return;
-            }
-            
-            // Show loading message
-            this.showLoadingMessage('Loading flashcards...');
-            
-            // Get the correct coordinates (node might have x,y or end.x,end.y)
-            const nodeX = node.x || node.end?.x || 0;
-            const nodeY = node.y || node.end?.y || 0;
-            
-            // Add visual leaves to the tree first (immediate feedback)
-            this.addLeavesToNode(node, 5); // Add 5 leaves immediately
-            console.log('Added leaves to node, total leaves now:', this.tree.leaves.length);
-            
-        // Use the unified endpoint that works with both database and frontend data
-        const flashcardData = {
-                    search_result: branch.searchResult,
-            count: 5,
-            node_position: { x: nodeX, y: nodeY } // Include node position for linking
-        };
-            
-            console.log('CACHE BUSTED: Sending flashcard request with data:', flashcardData);
-            console.log('Node position being stored:', { x: nodeX, y: nodeY });
-            
-            const response = await fetch(`${API_BASE_URL}/api/create-flashcards`, {
-                method: 'POST',
-                headers: { 
-                    'Content-Type': 'application/json',
-                    'Cache-Control': 'no-cache'
-                },
-                body: JSON.stringify(flashcardData)
-            });
-            
-            console.log('Response status:', response.status);
-            console.log('Response headers:', response.headers);
-            
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            
-            const responseText = await response.text();
-            console.log('Raw response text:', responseText);
-            
-            let data;
-            try {
-                data = JSON.parse(responseText);
-            } catch (parseError) {
-                console.error('JSON parse error:', parseError);
-                console.error('Response text that failed to parse:', responseText);
-                throw new Error('Failed to parse JSON response');
-            }
-            
-            console.log('Flashcard creation response:', data);
-            
-            if (data.success) {
-                // Add branch reference to each flashcard and fix casing
-                const flashcardsWithBranch = data.flashcards.map(flashcard => ({
-                    ...flashcard,
-                    front: this.toProperCase(flashcard.front),
-                    back: this.toProperCase(flashcard.back),
-                    branch: branch // Add branch reference for pruning
-                }));
-                
-                this.flashcards = [...this.flashcards, ...flashcardsWithBranch];
-                this.updateStatus(`Created ${data.flashcards.length} flashcards for ${branch.searchResult.title}`);
-                console.log('Flashcards created:', flashcardsWithBranch);
-                console.log('Total flashcards now:', this.flashcards.length);
-                
-                // Show success message
-                this.showLoadingMessage('Flashcards ready!');
-                setTimeout(() => this.hideLoadingMessage(), 2000); // Hide after 2 seconds
-                
-                // Update the flashcard deck display (no popup)
-                this.updateFlashcardDeck();
-            } else {
-                console.error('Failed to create flashcards:', data.error);
-                this.updateStatus(`Failed to create flashcards: ${data.error}`);
-                this.hideLoadingMessage();
-            }
-            
-        } catch (error) {
-            console.error('Error creating flashcards:', error);
-            this.updateStatus('Error creating flashcards');
-            this.hideLoadingMessage();
+        if (this.flashcardManager) {
+            return this.flashcardManager.createFlashcardsForNode(node);
         }
+        console.warn('Flashcard manager unavailable');
+        return null;
     }
     
     showLoadingMessage(message) {
-        // Remove any existing loading message
-        this.hideLoadingMessage();
-        
-        // Create loading message element in the same position as flashcard deck
-        const loadingElement = document.createElement('div');
-        loadingElement.id = 'loading-message';
-        loadingElement.style.cssText = `
-            position: fixed;
-            bottom: 20px;
-            left: 20px;
-            background: rgba(26, 26, 26, 0.95);
-            border: 2px solid #333;
-            border-radius: 10px;
-            padding: 15px 20px;
-            color: white;
-            font-family: 'Inter', sans-serif;
-            font-size: 14px;
-            font-weight: 500;
-            z-index: 1000;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-            animation: fadeIn 0.3s ease-in;
-            min-width: 200px;
-        `;
-        loadingElement.textContent = message;
-        
-        // Add CSS animation if not already added
-        if (!document.getElementById('loading-styles')) {
-            const style = document.createElement('style');
-            style.id = 'loading-styles';
-            style.textContent = `
-                @keyframes fadeIn {
-                    from { opacity: 0; transform: translateY(10px); }
-                    to { opacity: 1; transform: translateY(0); }
-                }
-                @keyframes fadeOut {
-                    from { opacity: 1; transform: translateY(0); }
-                    to { opacity: 0; transform: translateY(-10px); }
-                }
-            `;
-            document.head.appendChild(style);
+        if (this.flashcardManager) {
+            this.flashcardManager.showLoadingMessage(message);
         }
-        
-        document.body.appendChild(loadingElement);
     }
     
     hideLoadingMessage() {
-        const loadingElement = document.getElementById('loading-message');
-        if (loadingElement) {
-            loadingElement.style.animation = 'fadeOut 0.3s ease-out';
-            setTimeout(() => {
-                if (loadingElement.parentNode) {
-                    loadingElement.parentNode.removeChild(loadingElement);
-                }
-            }, 300);
+        if (this.flashcardManager) {
+            this.flashcardManager.hideLoadingMessage();
         }
     }
     
@@ -1678,522 +1064,52 @@ class UltraSimplePrune {
     }
     
     updateFlashcardDeck() {
-        // Create or update the flashcard deck button
-        let deckElement = document.getElementById('flashcard-deck');
-        if (!deckElement) {
-            deckElement = document.createElement('div');
-            deckElement.id = 'flashcard-deck';
-            deckElement.style.cssText = `
-                position: fixed;
-                bottom: 20px;
-                left: 20px;
-                z-index: 100;
-            `;
-            document.body.appendChild(deckElement);
+        if (this.flashcardManager) {
+            this.flashcardManager.updateFlashcardDeck();
         }
-        
-        if (this.flashcards.length === 0) {
-            deckElement.innerHTML = '';
-            return;
-        }
-        
-        // Group flashcards by main topic (parent node) categories
-        const groupedFlashcards = {};
-        console.log('Grouping flashcards:', this.flashcards.length, 'total cards');
-        this.flashcards.forEach(card => {
-            // Find the branch this flashcard was created from
-            const branch = card.branch;
-            let mainTopic = 'General';
-            
-            console.log('Processing flashcard:', card.front, 'branch:', branch);
-            
-            if (branch && branch.searchResult) {
-                console.log('Branch has searchResult:', branch.searchResult.title, 'generation:', branch.generation);
-                // Always try to find the parent main topic branch first
-                const parentBranch = this.findParentMainTopicBranch(branch);
-                if (parentBranch && parentBranch.searchResult) {
-                    mainTopic = parentBranch.searchResult.title;
-                    console.log('Using parent main topic branch title:', mainTopic);
-                } else if (branch.generation === 0 || branch.generation === 1) {
-                    // If this is already a main topic branch, use its title
-                    mainTopic = branch.searchResult.title;
-                    console.log('Using current branch as main topic (generation 0/1):', mainTopic);
-                } else {
-                    // Fallback to current branch title
-                    mainTopic = branch.searchResult.title;
-                    console.log('Using fallback branch title as main topic:', mainTopic);
-                }
-            } else {
-                mainTopic = card.category || 'General';
-                console.log('Using card category as main topic:', mainTopic);
-            }
-            
-            if (!groupedFlashcards[mainTopic]) {
-                groupedFlashcards[mainTopic] = [];
-            }
-            groupedFlashcards[mainTopic].push(card);
-        });
-        
-        console.log('Grouped flashcards:', groupedFlashcards);
-        
-        const totalCards = this.flashcards.length;
-        const totalDecks = Object.keys(groupedFlashcards).length;
-        
-        // Create simple button that shows deck view when clicked
-        deckElement.innerHTML = `
-            <button onclick="app.showDeckView()" style="
-                background: rgba(26, 26, 26, 0.95);
-                border: 2px solid #333;
-                border-radius: 10px;
-                padding: 12px 20px;
-                color: white;
-                font-family: 'Inter', sans-serif;
-                font-size: 14px;
-                font-weight: 500;
-                cursor: pointer;
-                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-                transition: background 0.2s;
-            " onmouseover="this.style.background='rgba(40, 40, 40, 0.95)'" onmouseout="this.style.background='rgba(26, 26, 26, 0.95)'">
-                📚 Flashcard Decks (${totalDecks} decks, ${totalCards} cards)
-            </button>
-        `;
-    }
-    
-    toProperCase(str) {
-        if (!str) return '';
-        return str.toLowerCase().replace(/\b\w/g, l => l.toUpperCase());
     }
     
     findParentMainTopicBranch(childBranch) {
-        // Find the parent main topic branch by traversing up the tree using parent relationships
-        // Main topic branches are generation 0 or 1
-        let currentBranch = childBranch;
-        console.log('Finding parent main topic for branch:', childBranch.searchResult?.title, 'generation:', childBranch.generation);
-        
-        while (currentBranch) {
-            // Check if this is a main topic branch
-            if (currentBranch.generation === 0 || currentBranch.generation === 1) {
-                console.log('Found main topic branch:', currentBranch.searchResult?.title, 'generation:', currentBranch.generation);
-                return currentBranch;
-            }
-            
-            // Use the parent relationship instead of coordinate matching
-            if (currentBranch.parent) {
-                console.log('Found parent branch:', currentBranch.parent.searchResult?.title, 'generation:', currentBranch.parent.generation);
-                currentBranch = currentBranch.parent;
-            } else {
-                console.log('No parent branch found for:', currentBranch.searchResult?.title);
-                break; // No parent found
-            }
+        if (this.flashcardManager) {
+            return this.flashcardManager.findParentMainTopicBranch(childBranch);
         }
-        
-        console.log('No main topic branch found for:', childBranch.searchResult?.title);
-        return null; // No main topic branch found
+        return childBranch || null;
     }
     
     showDeckView() {
-        if (this.flashcards.length === 0) {
-            this.updateStatus('No flashcards created yet');
-            return;
+        if (this.flashcardManager) {
+            this.flashcardManager.showDeckView();
         }
-        
-        // Group flashcards by main topic (parent node) categories
-        const groupedFlashcards = {};
-        this.flashcards.forEach(card => {
-            // Find the branch this flashcard was created from
-            const branch = card.branch;
-            let mainTopic = 'General';
-            
-            if (branch && branch.searchResult) {
-                // If this is a first-generation branch (main topic), use its title
-                if (branch.generation === 0 || branch.generation === 1) {
-                    mainTopic = branch.searchResult.title;
-                } else {
-                    // For child branches, find the parent main topic branch
-                    const parentBranch = this.findParentMainTopicBranch(branch);
-                    if (parentBranch && parentBranch.searchResult) {
-                        mainTopic = parentBranch.searchResult.title;
-                    } else {
-                        mainTopic = branch.searchResult.title; // Fallback
-                    }
-                }
-            } else {
-                mainTopic = card.category || 'General';
-            }
-            
-            if (!groupedFlashcards[mainTopic]) {
-                groupedFlashcards[mainTopic] = [];
-            }
-            groupedFlashcards[mainTopic].push(card);
-        });
-        
-        // Create modal with deck view
-        const modal = document.createElement('div');
-        modal.className = 'deck-view-modal';
-        modal.style.cssText = `
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background: #1a1a1a;
-            border: 2px solid #333;
-            border-radius: 10px;
-            padding: 20px;
-            min-width: 500px;
-            max-height: 80vh;
-            overflow-y: auto;
-            z-index: 1000;
-            color: white;
-        `;
-        
-        // Create simple deck display
-        let deckHTML = `
-            <div style="margin-bottom: 15px;">
-                <h3 style="margin: 0 0 15px 0; color: #fff; font-size: 16px; font-weight: 600;">📚 Flashcard Decks</h3>
-                <div style="display: grid; grid-template-columns: 1fr auto; gap: 10px; margin-bottom: 10px; padding: 8px; background: rgba(255,255,255,0.05); border-radius: 5px; font-weight: 600; color: #ccc;">
-                    <div>Deck</div>
-                    <div>Cards</div>
-                </div>
-        `;
-        
-        Object.keys(groupedFlashcards).forEach(topic => {
-            const cards = groupedFlashcards[topic];
-            const totalCards = cards.length;
-            
-            deckHTML += `
-                <div style="display: grid; grid-template-columns: 1fr auto; gap: 10px; padding: 8px; border-radius: 5px; cursor: pointer; transition: background 0.2s;" 
-                     onmouseover="this.style.background='rgba(255,255,255,0.1)'" 
-                     onmouseout="this.style.background='transparent'"
-                     onclick="app.showDeckFlashcards('${topic}')">
-                    <div style="color: #fff; font-weight: 500;">${topic}</div>
-                    <div style="color: #fff; font-weight: 600;">${totalCards}</div>
-                    </div>
-            `;
-        });
-        
-        deckHTML += `
-            </div>
-            <div style="text-align: center; margin-top: 10px;">
-                <button onclick="app.showAllFlashcards()" style="
-                    background: #3b82f6; 
-                    color: white; 
-                    border: none; 
-                    padding: 8px 16px; 
-                    border-radius: 5px; 
-                    cursor: pointer; 
-                    font-family: 'Inter', sans-serif;
-                    font-size: 12px;
-                    font-weight: 500;
-                ">View All Cards</button>
-                </div>
-            `;
-        
-        modal.innerHTML = `
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                <h3 style="margin: 0; color: #fff;">📚 Flashcard Decks</h3>
-                <button onclick="this.parentElement.parentElement.remove()" style="background: none; border: none; color: #fff; font-size: 20px; cursor: pointer;">×</button>
-            </div>
-            ${deckHTML}
-        `;
-        
-        document.body.appendChild(modal);
-        
-        // Close modal when clicking outside
-        modal.addEventListener('click', (e) => {
-            if (e.target === modal) {
-                modal.remove();
-            }
-        });
     }
     
     showDeckFlashcards(topic) {
-        const deckCards = this.flashcards.filter(card => card.category === topic);
-        if (deckCards.length === 0) {
-            this.updateStatus('No flashcards found for this topic');
-            return;
+        if (this.flashcardManager) {
+            this.flashcardManager.showDeckFlashcards(topic);
         }
-        
-        // Create a modal to display flashcards for this specific deck
-        const modal = document.createElement('div');
-        modal.className = 'deck-flashcards-modal';
-        modal.style.cssText = `
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background: #1a1a1a;
-            border: 2px solid #333;
-            border-radius: 10px;
-            padding: 20px;
-            max-width: 800px;
-            max-height: 80vh;
-            overflow-y: auto;
-            z-index: 1000;
-            color: white;
-            font-family: 'Inter', sans-serif;
-        `;
-        
-        modal.innerHTML = `
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                <h3 style="margin: 0; color: #fff;">📚 ${topic} Deck (${deckCards.length} cards)</h3>
-                <button onclick="this.parentElement.parentElement.remove()" style="background: none; border: none; color: #fff; font-size: 20px; cursor: pointer;">×</button>
-            </div>
-            <div id="deck-flashcards-container">
-                ${deckCards.map((card, index) => `
-                    <div class="flashcard" style="border: 1px solid #333; border-radius: 5px; margin: 10px 0; padding: 15px; background: #2a2a2a; cursor: pointer; font-family: 'Inter', sans-serif;" data-node-position='${JSON.stringify(card.node_position)}'>
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                            <span style="color: #3b82f6; font-weight: bold;">Card ${index + 1}</span>
-                            <span style="color: #666; font-size: 12px;">${card.difficulty}</span>
-                        </div>
-                        <div style="margin-bottom: 10px;">
-                            <strong style="color: #fff;">Q:</strong> ${this.formatContent(card.front)}
-                        </div>
-                        <div style="margin-bottom: 10px;">
-                            <strong style="color: #fff;">A:</strong> ${this.formatContent(card.back)}
-                        </div>
-                        <div style="color: #3b82f6; font-size: 12px; text-align: center; margin-top: 10px; padding-top: 10px; border-top: 1px solid #333;">
-                            Click to highlight source node on tree
-                        </div>
-                    </div>
-                `).join('')}
-            </div>
-        `;
-        
-        document.body.appendChild(modal);
-        
-        // Add click handlers for flashcards to highlight source nodes
-        const flashcardElements = modal.querySelectorAll('.flashcard');
-        flashcardElements.forEach(card => {
-            card.addEventListener('click', (e) => {
-                e.stopPropagation(); // Prevent modal close
-                const nodePosition = JSON.parse(card.dataset.nodePosition);
-                this.highlightNodeAtPosition(nodePosition);
-                // Don't close modal - let user continue using the highlight button
-            });
-        });
-        
-        // Close modal when clicking outside
-        modal.addEventListener('click', (e) => {
-            if (e.target === modal) {
-                modal.remove();
-            }
-        });
     }
     
     showAllFlashcards() {
-        if (this.flashcards.length === 0) {
-            this.updateStatus('No flashcards created yet');
-            return;
+        if (this.flashcardManager) {
+            this.flashcardManager.showAllFlashcards();
         }
-        
-        // Group flashcards by main topic (parent node) categories
-        const groupedFlashcards = {};
-        this.flashcards.forEach(card => {
-            // Find the branch this flashcard was created from
-            const branch = card.branch;
-            let mainTopic = 'General';
-            
-            if (branch && branch.searchResult) {
-                // If this is a first-generation branch (main topic), use its title
-                if (branch.generation === 0 || branch.generation === 1) {
-                    mainTopic = branch.searchResult.title;
-                } else {
-                    // For child branches, find the parent main topic branch
-                    const parentBranch = this.findParentMainTopicBranch(branch);
-                    if (parentBranch && parentBranch.searchResult) {
-                        mainTopic = parentBranch.searchResult.title;
-                    } else {
-                        mainTopic = branch.searchResult.title; // Fallback
-                    }
-                }
-            } else {
-                mainTopic = card.category || 'General';
-            }
-            
-            if (!groupedFlashcards[mainTopic]) {
-                groupedFlashcards[mainTopic] = [];
-            }
-            groupedFlashcards[mainTopic].push(card);
-        });
-        
-        // Create a comprehensive modal
-        const modal = document.createElement('div');
-        modal.className = 'all-flashcards-modal';
-        modal.style.cssText = `
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background: #1a1a1a;
-            border: 2px solid #333;
-            border-radius: 10px;
-            padding: 20px;
-            max-width: 800px;
-            max-height: 80vh;
-            overflow-y: auto;
-            z-index: 1000;
-            color: white;
-            font-family: 'Inter', sans-serif;
-        `;
-        
-        let modalHTML = `
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                <h3 style="margin: 0; color: #fff;">📚 Complete Flashcard Deck (${this.flashcards.length} cards)</h3>
-                <button onclick="this.parentElement.parentElement.remove()" style="background: none; border: none; color: #fff; font-size: 20px; cursor: pointer;">×</button>
-            </div>
-        `;
-        
-        Object.keys(groupedFlashcards).forEach(topic => {
-            const cards = groupedFlashcards[topic];
-            modalHTML += `
-                <div style="margin-bottom: 20px; border: 1px solid #333; border-radius: 5px; padding: 15px;">
-                    <h4 style="color: #3b82f6; margin: 0 0 10px 0;">${topic} (${cards.length} cards)</h4>
-                    ${cards.map((card, index) => `
-                        <div style="border: 1px solid #444; border-radius: 3px; margin: 8px 0; padding: 10px; background: #2a2a2a; font-family: 'Inter', sans-serif;">
-                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                                <span style="color: #3b82f6; font-weight: bold;">Card ${index + 1}</span>
-                                <span style="color: #666; font-size: 12px;">${card.difficulty}</span>
-                            </div>
-                            <div style="margin-bottom: 8px;">
-                                <strong style="color: #fff;">Q:</strong> ${this.formatContent(card.front)}
-                            </div>
-                            <div>
-                                <strong style="color: #fff;">A:</strong> ${this.formatContent(card.back)}
-                            </div>
-                        </div>
-                    `).join('')}
-                </div>
-            `;
-        });
-        
-        modal.innerHTML = modalHTML;
-        document.body.appendChild(modal);
     }
     
     showFlashcards(flashcards, topic) {
-        // Create a simple modal to display flashcards
-        const modal = document.createElement('div');
-        modal.className = 'flashcard-modal';
-        modal.style.cssText = `
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background: #1a1a1a;
-            border: 2px solid #333;
-            border-radius: 10px;
-            padding: 20px;
-            max-width: 600px;
-            max-height: 80vh;
-            overflow-y: auto;
-            z-index: 1000;
-            color: white;
-            font-family: 'Inter', sans-serif;
-        `;
-        
-        modal.innerHTML = `
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                <h3 style="margin: 0; color: #fff;">Flashcards: ${topic}</h3>
-                <button onclick="this.parentElement.parentElement.remove()" style="background: none; border: none; color: #fff; font-size: 20px; cursor: pointer;">×</button>
-            </div>
-            <div id="flashcards-container">
-                ${flashcards.map((card, index) => `
-                    <div class="flashcard" style="border: 1px solid #333; border-radius: 5px; margin: 10px 0; padding: 15px; background: #2a2a2a; cursor: pointer; font-family: 'Inter', sans-serif;" data-node-position='${JSON.stringify(card.node_position)}'>
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                            <span style="color: #3b82f6; font-weight: bold;">Card ${index + 1}</span>
-                            <span style="color: #666; font-size: 12px;">${card.difficulty}</span>
-                        </div>
-                        <div style="margin-bottom: 10px;">
-                            <strong style="color: #fff;">Q:</strong> ${this.formatContent(card.front)}
-                        </div>
-                        <div style="margin-bottom: 10px;">
-                            <strong style="color: #fff;">A:</strong> ${this.formatContent(card.back)}
-                        </div>
-                        <div style="color: #3b82f6; font-size: 12px; text-align: center; margin-top: 10px; padding-top: 10px; border-top: 1px solid #333;">
-                            Click to highlight source node on tree
-                        </div>
-                    </div>
-                `).join('')}
-            </div>
-        `;
-        
-        document.body.appendChild(modal);
-        
-        // Add click handlers for flashcards to highlight source nodes
-        const flashcardElements = modal.querySelectorAll('.flashcard');
-        flashcardElements.forEach(card => {
-            card.addEventListener('click', (e) => {
-                e.stopPropagation(); // Prevent modal close
-                const nodePosition = JSON.parse(card.dataset.nodePosition);
-                this.highlightNodeAtPosition(nodePosition);
-                // Don't close modal - let user continue using the highlight button
-            });
-        });
-        
-        // Close modal when clicking outside
-        modal.addEventListener('click', (e) => {
-            if (e.target === modal) {
-                modal.remove();
-            }
-        });
+        if (this.flashcardManager) {
+            this.flashcardManager.showFlashcards(flashcards, topic);
+        }
     }
     
     highlightNodeAtPosition(nodePosition) {
-        console.log('Attempting to highlight node at position:', nodePosition);
-        if (!nodePosition || !nodePosition.x || !nodePosition.y) {
-            console.warn('Invalid node position for highlighting:', nodePosition);
-            return;
+        if (this.flashcardManager) {
+            this.flashcardManager.highlightNodeFromFlashcard(nodePosition);
         }
-        
-        // Close all deck modals
-        this.closeAllDeckModals();
-        
-        console.log('Available branches:', this.tree.branches.length);
-        console.log('Branch positions:', this.tree.branches.map(b => ({ x: b.end.x, y: b.end.y })));
-        
-        // Find the node at the given position (increased tolerance)
-        const targetNode = this.tree.branches.find(branch => {
-            const distanceX = Math.abs(branch.end.x - nodePosition.x);
-            const distanceY = Math.abs(branch.end.y - nodePosition.y);
-            console.log(`Checking branch at (${branch.end.x}, ${branch.end.y}) vs target (${nodePosition.x}, ${nodePosition.y}) - distances: ${distanceX}, ${distanceY}`);
-            return distanceX < 20 && distanceY < 20;
-        });
-        
-        if (!targetNode) {
-            console.warn('No node found at position:', nodePosition);
-            console.log('Tried to find node within 20 pixels of:', nodePosition);
-            this.updateStatus('Source node not found on tree');
-            return;
-        }
-        
-        console.log('Found target node:', targetNode);
-        
-        // Center the camera on the target node
-        this.cameraOffset.x = -targetNode.end.x + this.canvas.width / 2;
-        this.cameraOffset.y = -targetNode.end.y + this.canvas.height / 2;
-        
-        // Add a temporary highlight effect
-        this.highlightedNode = targetNode;
-        this.highlightStartTime = Date.now();
-        
-        // Clear any existing highlight timeout
-        if (this.highlightTimeout) {
-            clearTimeout(this.highlightTimeout);
-        }
-        
-        // Remove highlight after 3 seconds
-        this.highlightTimeout = setTimeout(() => {
-            this.highlightedNode = null;
-            this.highlightStartTime = null;
-        }, 3000);
-        
-        this.updateStatus(`Highlighted source node: ${targetNode.searchResult.title}`);
     }
     
     closeAllDeckModals() {
-        // Close all deck-related modals
-        const deckModals = document.querySelectorAll('.deck-view-modal, .deck-flashcards-modal, .flashcard-modal, .all-flashcards-modal');
-        deckModals.forEach(modal => modal.remove());
+        if (this.flashcardManager) {
+            this.flashcardManager.closeAllDeckModals();
+        }
     }
     
     async saveGameState() {
@@ -2272,46 +1188,36 @@ class UltraSimplePrune {
         this.tree.leaves = [];
         this.tree.fruits = [];
         this.tree.flowers = [];
-        this.searchResults = [];
-        this.originalSearchQuery = null;
-        this.usedSearchResults = new Set();
         this.currentSessionId = null;
-        this.flashcards = [];
         this.isLoadingGame = false;
+        this.gameState = 'welcome';
+        this.panY = 0;
+        
+        if (this.flashcardManager) {
+            this.flashcardManager.reset();
+        }
+        if (this.searchManager) {
+            this.searchManager.reset();
+        }
+        if (this.welcomeManager) {
+            this.welcomeManager.reset();
+        }
         
         // Reset camera to default position
         this.cameraOffset = { x: 0, y: 0 };
         
-        // Reset welcome sequence
-        this.welcomeSequence = {
-            isActive: false,
-            hasShownPrompt: false,
-            targetPanY: 0,
-            currentPanY: 0,
-            panSpeed: 0.02
-        };
-        
         // Hide any existing modals
         this.hideStudyModal();
         
-        // Remove any existing prompt box
-        const promptBox = document.getElementById('welcomePrompt');
-        if (promptBox) {
-            promptBox.remove();
-        }
-        
         // Remove any existing flashcard deck UI elements
-        const flashcardDeckElements = document.querySelectorAll('.flashcard-deck, .flashcard-modal, [id*="flashcard"]');
-        flashcardDeckElements.forEach(element => {
-            if (element.id !== 'showFlashcardsBtn') { // Don't remove the button in study modal
-                element.remove();
-            }
-        });
-        
+        if (this.flashcardManager) {
+            this.flashcardManager.closeAllDeckModals();
+        }
+
         // Start the welcome sequence
-        this.startWelcomeSequence();
+        this.welcomeManager.startSequence();
         
-        this.updateStatus('Game restarted!');
+        this.updateStatus('Game restarted! Enter a topic to begin learning.');
     }
     
     

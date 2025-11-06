@@ -21,15 +21,17 @@ def _db_unavailable_error() -> HTTPException:
     return HTTPException(status_code=503, detail="Saving and loading are temporarily disabled.")
 
 DB_AVAILABLE = False
+SessionLocal = None  # Will be set if database initializes successfully
 
 try:
     from models import (
         create_tables, get_db, GameSession, SearchResult, Branch, 
-        Leaf, Flashcard, Fruit, Flower
+        Leaf, Flashcard, Fruit, Flower, SessionLocal as ModelSessionLocal
     )
 
     create_tables()
     DB_AVAILABLE = True
+    SessionLocal = ModelSessionLocal
     logger.info("Database initialized successfully.")
 except Exception as exc:
     logger.error("Database initialization failed: %s", exc)
@@ -488,14 +490,18 @@ async def get_game_sessions(db: Session = Depends(get_db)):
 # Removed extra endpoint - using existing /api/create-flashcards endpoint
 
 @app.post("/api/create-flashcards")
-async def create_flashcards(request: CreateFlashcardsRequest, db: Session = Depends(get_db)):
-    if not DB_AVAILABLE:
-        raise _db_unavailable_error()
+async def create_flashcards(request: CreateFlashcardsRequest):
+    db_session: Optional[Session] = None
+    branch = None
     try:
         # Handle both database branches and frontend data
         if request.branch_id:
+            if not DB_AVAILABLE or SessionLocal is None:
+                raise _db_unavailable_error()
+            
+            db_session = SessionLocal()
             # Database branch approach
-            branch = db.query(Branch).filter(Branch.id == request.branch_id).first()
+            branch = db_session.query(Branch).filter(Branch.id == request.branch_id).first()
             if not branch:
                 raise HTTPException(status_code=404, detail="Branch not found")
             
@@ -598,7 +604,7 @@ async def create_flashcards(request: CreateFlashcardsRequest, db: Session = Depe
                     category=branch.search_result.title,
                     created_at=datetime.now(timezone.utc)
                 )
-                db.add(flashcard)
+                db_session.add(flashcard)
                 created_flashcards.append({
                     "id": flashcard.id,
                     "front": flashcard.front,
@@ -618,8 +624,8 @@ async def create_flashcards(request: CreateFlashcardsRequest, db: Session = Depe
                     "node_position": request.node_position  # Include node position for linking
                 })
         
-        if request.branch_id:
-            db.commit()
+        if request.branch_id and db_session:
+            db_session.commit()
         
         return {
             "success": True,
@@ -627,9 +633,17 @@ async def create_flashcards(request: CreateFlashcardsRequest, db: Session = Depe
             "message": f"Created {len(created_flashcards)} flashcards for {search_result_data.get('title', 'Unknown Topic')}"
         }
         
+    except HTTPException as exc:
+        if db_session:
+            db_session.rollback()
+        raise exc
     except Exception as e:
-        db.rollback()
+        if db_session:
+            db_session.rollback()
         return {"error": str(e), "success": False}
+    finally:
+        if db_session:
+            db_session.close()
 
 @app.get("/api/flashcards/{branch_id}")
 async def get_flashcards(branch_id: int, db: Session = Depends(get_db)):

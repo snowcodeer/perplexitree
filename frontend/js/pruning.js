@@ -136,27 +136,14 @@ class PruningSystem {
     }
     
     removeFlashcardsFromRemovedBranches(removedBranches) {
-        const initialFlashcardCount = this.game.flashcards.length;
-        
-        // Create a set of removed branches for quick lookup
-        const removedBranchSet = new Set(removedBranches);
-        
-        // Filter out flashcards that belong to removed branches
-        this.game.flashcards = this.game.flashcards.filter(flashcard => {
-            // Check if the flashcard's branch is in the removed branches set
-            const shouldKeep = !removedBranchSet.has(flashcard.branch);
-            if (!shouldKeep) {
-                console.log('Removing flashcard from pruned branch:', flashcard);
-            }
-            return shouldKeep;
-        });
-        
-        const removedFlashcardCount = initialFlashcardCount - this.game.flashcards.length;
-        
-        if (removedFlashcardCount > 0) {
-            console.log(`Removed ${removedFlashcardCount} flashcards from pruned branches`);
-            // Update the flashcard deck display
-            this.game.updateFlashcardDeck();
+        if (!this.game.flashcardManager) {
+            return;
+        }
+
+        const removedCount = this.game.flashcardManager.removeFlashcardsFromBranches(removedBranches);
+
+        if (removedCount > 0) {
+            console.log(`Removed ${removedCount} flashcards from pruned branches`);
         }
     }
     

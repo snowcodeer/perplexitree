@@ -134,15 +134,21 @@ class PruneApp {
     }
     
     showAllFlashcards() {
-        this.game.showAllFlashcards();
+        if (this.game?.flashcardManager) {
+            this.game.flashcardManager.showAllFlashcards();
+        }
     }
     
     showDeckFlashcards(topic) {
-        this.game.showDeckFlashcards(topic);
+        if (this.game?.flashcardManager) {
+            this.game.flashcardManager.showDeckFlashcards(topic);
+        }
     }
     
     showDeckView() {
-        this.game.showDeckView();
+        if (this.game?.flashcardManager) {
+            this.game.flashcardManager.showDeckView();
+        }
     }
     
     restartGame() {
