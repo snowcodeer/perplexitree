@@ -143,8 +143,28 @@ class Flower(Base):
     game_session = relationship("GameSession", back_populates="flowers")
 
 # Database setup
-DATABASE_URL = f"sqlite:///{os.path.join(os.path.dirname(__file__), '..', 'perplexitree.db')}"
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+def _resolve_database_url() -> str:
+    env_database_url = os.getenv("DATABASE_URL")
+    if env_database_url:
+        return env_database_url
+
+    default_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "perplexitree.db"))
+    default_dir = os.path.dirname(default_path)
+
+    try:
+        os.makedirs(default_dir, exist_ok=True)
+        with open(default_path, "a"):
+            pass
+        return f"sqlite:///{default_path}"
+    except OSError:
+        tmp_path = os.path.join("/tmp", "perplexitree.db")
+        os.makedirs(os.path.dirname(tmp_path), exist_ok=True)
+        return f"sqlite:///{tmp_path}"
+
+
+DATABASE_URL = _resolve_database_url()
+connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
+engine = create_engine(DATABASE_URL, connect_args=connect_args)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def create_tables():

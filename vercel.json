@@ -23,8 +23,5 @@
       "src": "/(.*)",
       "dest": "frontend/index.html"
     }
-  ],
-  "env": {
-    "PERPLEXITY_API_KEY": "PERPLEXITY_API_KEY"
-  }
+  ]
 }

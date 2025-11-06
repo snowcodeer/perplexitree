@@ -6,10 +6,7 @@ from pydantic import BaseModel
 from perplexity import Perplexity
 from dotenv import load_dotenv
 from sqlalchemy.orm import Session
-from models import (
-    create_tables, get_db, GameSession, SearchResult, Branch, 
-    Leaf, Flashcard, Fruit, Flower
-)
+import logging
 import os
 import json
 from datetime import datetime, timezone
@@ -17,9 +14,29 @@ from typing import Optional
 
 load_dotenv()
 app = FastAPI()
+logger = logging.getLogger(__name__)
 
-# Initialize database
-create_tables()
+
+def _db_unavailable_error() -> HTTPException:
+    return HTTPException(status_code=503, detail="Saving and loading are temporarily disabled.")
+
+DB_AVAILABLE = False
+
+try:
+    from models import (
+        create_tables, get_db, GameSession, SearchResult, Branch, 
+        Leaf, Flashcard, Fruit, Flower
+    )
+
+    create_tables()
+    DB_AVAILABLE = True
+    logger.info("Database initialized successfully.")
+except Exception as exc:
+    logger.error("Database initialization failed: %s", exc)
+
+    def get_db():  # type: ignore
+        raise _db_unavailable_error()
+
 
 # Add CORS middleware
 app.add_middleware(
@@ -184,6 +201,8 @@ def web_search(request: WebSearchRequest):
 
 @app.post("/api/save-game-state")
 async def save_game_state(request: SaveGameStateRequest, db: Session = Depends(get_db)):
+    if not DB_AVAILABLE:
+        raise _db_unavailable_error()
     try:
         # Create new game session
         game_session = GameSession(
@@ -329,6 +348,8 @@ async def save_game_state(request: SaveGameStateRequest, db: Session = Depends(g
 
 @app.post("/api/load-game-state")
 async def load_game_state(request: LoadGameStateRequest, db: Session = Depends(get_db)):
+    if not DB_AVAILABLE:
+        raise _db_unavailable_error()
     try:
         # Get game session
         game_session = db.query(GameSession).filter(GameSession.id == request.session_id).first()
@@ -448,6 +469,8 @@ async def load_game_state(request: LoadGameStateRequest, db: Session = Depends(g
 
 @app.get("/api/game-sessions")
 async def get_game_sessions(db: Session = Depends(get_db)):
+    if not DB_AVAILABLE:
+        raise _db_unavailable_error()
     try:
         sessions = db.query(GameSession).order_by(GameSession.updated_at.desc()).all()
         sessions_data = []
@@ -466,6 +489,8 @@ async def get_game_sessions(db: Session = Depends(get_db)):
 
 @app.post("/api/create-flashcards")
 async def create_flashcards(request: CreateFlashcardsRequest, db: Session = Depends(get_db)):
+    if not DB_AVAILABLE:
+        raise _db_unavailable_error()
     try:
         # Handle both database branches and frontend data
         if request.branch_id:
@@ -634,6 +659,8 @@ async def get_flashcards(branch_id: int, db: Session = Depends(get_db)):
 
 @app.post("/api/delete-game-state")
 async def delete_game_state(request: DeleteGameStateRequest, db: Session = Depends(get_db)):
+    if not DB_AVAILABLE:
+        raise _db_unavailable_error()
     try:
         # Get the game session
         game_session = db.query(GameSession).filter(GameSession.id == request.session_id).first()

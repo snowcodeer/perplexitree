@@ -1,3 +1,12 @@
+const API_BASE_URL = (() => {
+    const origin = window.location.origin || "";
+    const isLocalHost = /localhost|127\.0\.0\.1|0\.0\.0\.0/.test(origin);
+    if (!origin || origin === "null" || origin.startsWith("file:")) {
+        return "http://localhost:8001";
+    }
+    return isLocalHost ? "http://localhost:8001" : "";
+})();
+
 /**
  * Main Game Class - Handles the core game logic and rendering
  */
@@ -752,7 +761,7 @@ class UltraSimplePrune {
     async generateMultipleChoiceQuestions(flashcards) {
         try {
             // Use AI to generate quiz questions based on the flashcards
-            const response = await fetch('/api/generate-quiz', {
+            const response = await fetch(`${API_BASE_URL}/api/generate-quiz`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -1177,7 +1186,7 @@ class UltraSimplePrune {
         console.log('Fetching search results for:', userInput);
         this.originalSearchQuery = userInput; // Store the original search query
         try {
-            const response = await fetch('http://localhost:8001/api/search', {
+            const response = await fetch(`${API_BASE_URL}/api/search`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ query: userInput })
@@ -1383,7 +1392,7 @@ class UltraSimplePrune {
                 // Build negative prompts from existing results
                 const currentNegativePrompts = allResults.map(result => result.title);
                 
-                const response = await fetch('http://localhost:8001/api/web-search', {
+                const response = await fetch(`${API_BASE_URL}/api/web-search`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ 
@@ -1492,7 +1501,7 @@ class UltraSimplePrune {
             console.log('CACHE BUSTED: Sending flashcard request with data:', flashcardData);
             console.log('Node position being stored:', { x: nodeX, y: nodeY });
             
-            const response = await fetch('http://localhost:8001/api/create-flashcards', {
+            const response = await fetch(`${API_BASE_URL}/api/create-flashcards`, {
                 method: 'POST',
                 headers: { 
                     'Content-Type': 'application/json',
@@ -2188,373 +2197,28 @@ class UltraSimplePrune {
     }
     
     async saveGameState() {
-        try {
-            // Check if we have a valid search query
-            if (!this.originalSearchQuery) {
-                this.updateStatus('No search query found. Please start a game first.');
-                return;
-            }
-            
-            // Prepare search results data
-            const searchResultsData = this.searchResults.map(result => ({
-                title: result.title,
-                url: result.url,
-                snippet: result.snippet,
-                llm_content: result.llm_content,
-                search_query: result.search_query || ""
-            }));
-            
-            // Prepare branches data with hierarchy
-            console.log('Saving branches with parent relationships...');
-            const branchesData = this.tree.branches.map(branch => {
-                console.log(`Saving branch:`, branch.searchResult?.title, 'parent:', branch.parent?.searchResult?.title, 'parentId:', branch.parent?.id);
-                return {
-                start: { x: branch.start.x, y: branch.start.y },
-                end: { x: branch.end.x, y: branch.end.y },
-                length: branch.length,
-                maxLength: branch.maxLength,
-                angle: branch.angle,
-                thickness: branch.thickness,
-                generation: branch.generation,
-                isGrowing: branch.isGrowing,
-                growthSpeed: branch.growthSpeed,
-                nodeType: branch.nodeType || "branch",
-                    parentId: branch.parent?.id || null,
-                searchResult: branch.searchResult || null
-                };
-            });
-            
-            // Prepare leaves data
-            const leavesData = this.tree.leaves.map(leaf => ({
-                x: leaf.x,
-                y: leaf.y,
-                size: leaf.size,
-                branchId: leaf.branchId || 1
-            }));
-            
-            // Prepare fruits data
-            const fruitsData = this.tree.fruits.map(fruit => ({
-                x: fruit.x,
-                y: fruit.y,
-                type: fruit.type,
-                size: fruit.size
-            }));
-            
-            // Prepare flowers data
-            const flowersData = this.tree.flowers.map(flower => ({
-                x: flower.x,
-                y: flower.y,
-                type: flower.type,
-                size: flower.size
-            }));
-            
-            // Prepare flashcards data
-            const flashcardsData = this.flashcards.map(flashcard => ({
-                branch_id: flashcard.branch_id,
-                front: flashcard.front,
-                back: flashcard.back,
-                difficulty: flashcard.difficulty,
-                category: flashcard.category
-            }));
-            
-            const saveData = {
-                    original_search_query: this.originalSearchQuery,
-                    search_results: searchResultsData,
-                    branches: branchesData,
-                    leaves: leavesData,
-                    fruits: fruitsData,
-                    flowers: flowersData,
-                    flashcards: flashcardsData,
-                    camera_offset: this.cameraOffset
-            };
-            
-            console.log('Saving game state with data:', saveData);
-            
-            const response = await fetch('http://localhost:8001/api/save-game-state', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(saveData)
-            });
-            
-            console.log('Save response status:', response.status);
-            console.log('Save response headers:', response.headers);
-            
-            const responseText = await response.text();
-            console.log('Raw response text:', responseText);
-            
-            let data;
-            try {
-                data = JSON.parse(responseText);
-            } catch (parseError) {
-                console.error('JSON parse error:', parseError);
-                console.error('Response text that failed to parse:', responseText);
-                throw new Error('Failed to parse JSON response');
-            }
-            
-            if (data.success) {
-                this.currentSessionId = data.session_id;
-                this.updateStatus(`Game state saved! Session ID: ${data.session_id}`);
-                console.log('Game state saved successfully:', data);
-            } else {
-                console.error('Failed to save game state:', data.error);
-                this.updateStatus('Failed to save game state');
-            }
-            
-        } catch (error) {
-            console.error('Error saving game state:', error);
-            this.updateStatus('Error saving game state');
-        }
+        this.updateStatus('Saving is temporarily disabled while we upgrade storage.');
+        console.warn('saveGameState called but feature is disabled');
     }
     
     async loadGameState(sessionId) {
         try {
-            this.isLoadingGame = true; // Set flag to prevent welcome sequence
-            
-            // Hide the prompt box if it exists
-            const promptBox = document.getElementById('welcomePrompt');
-            if (promptBox) {
-                promptBox.remove();
-            }
-            
-            const response = await fetch('http://localhost:8001/api/load-game-state', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ session_id: sessionId })
-            });
-            
-            const data = await response.json();
-            
-            if (data.success) {
-                const gameState = data.game_state;
-                
-                // Restore original search query
-                this.originalSearchQuery = gameState.original_search_query;
-                
-                // Reset camera to default position (always load trees from default view)
-                this.cameraOffset = { x: 0, y: 0 };
-                
-                // Restore search results
-                this.searchResults = gameState.search_results;
-                
-                // Clear existing tree elements
-                this.tree.branches = [];
-                this.tree.leaves = [];
-                this.tree.fruits = [];
-                this.tree.flowers = [];
-                
-                // Restore branches
-                gameState.branches.forEach(branchData => {
-                    const branch = {
-                        start: branchData.start,
-                        end: branchData.end,
-                        length: branchData.length,
-                        maxLength: branchData.maxLength,
-                        angle: branchData.angle,
-                        thickness: branchData.thickness,
-                        generation: branchData.generation,
-                        isGrowing: branchData.isGrowing,
-                        growthSpeed: branchData.growthSpeed,
-                        searchResult: branchData.searchResult
-                    };
-                    this.tree.branches.push(branch);
-                });
-                
-                // Shift the WHOLE tree to connect to trunk
-                if (this.tree.branches.length > 0) {
-                    // Find the first generation branch to see where the tree base should be
-                    const firstGenBranch = this.tree.branches.find(b => b.generation === 1);
-                    if (firstGenBranch) {
-                        // Calculate offset to move the tree base to the trunk
-                        const trunkTopX = this.tree.x;
-                        const trunkTopY = this.tree.y - this.tree.trunkHeight;
-                        const offsetX = trunkTopX - firstGenBranch.start.x;
-                        const offsetY = trunkTopY - firstGenBranch.start.y;
-                        
-                        // Apply offset to ALL branches to shift the whole tree
-                        this.tree.branches.forEach(branch => {
-                            branch.start.x += offsetX;
-                            branch.start.y += offsetY;
-                            branch.end.x += offsetX;
-                            branch.end.y += offsetY;
-                        });
-                        
-                        // Store offset for leaves and flowers
-                        this.treeOffsetX = offsetX;
-                        this.treeOffsetY = offsetY;
-                    }
-                }
-                
-                // Restore leaves with proper branch references
-                console.log('Loading leaves:', gameState.leaves);
-                gameState.leaves.forEach(leafData => {
-                    const leaf = {
-                        x: leafData.x + (this.treeOffsetX || 0), // Apply tree offset
-                        y: leafData.y + (this.treeOffsetY || 0), // Apply tree offset
-                        size: leafData.size,
-                        branchId: leafData.branchId,
-                        sway: Math.random() * Math.PI * 2, // Add sway for animation
-                        angle: Math.random() * Math.PI * 2, // Add angle for rotation
-                        branch: null // Will be set below
-                    };
-                    
-                    // Try to find the branch this leaf belongs to
-                    if (leafData.branchId) {
-                        // Find branch by ID (if we have branch IDs)
-                        const branch = this.tree.branches.find(b => b.id === leafData.branchId);
-                        if (branch) {
-                            leaf.branch = branch;
-                        }
-                    } else {
-                        // Find branch by position (fallback)
-                        const branch = this.tree.branches.find(branch => 
-                            Math.abs(branch.end.x - leaf.x) < 20 && 
-                            Math.abs(branch.end.y - leaf.y) < 20
-                        );
-                        if (branch) {
-                            leaf.branch = branch;
-                        }
-                    }
-                    
-                    this.tree.leaves.push(leaf);
-                });
-                console.log('Total leaves after loading:', this.tree.leaves.length);
-                
-                // Restore fruits
-                gameState.fruits.forEach(fruitData => {
-                    const fruit = {
-                        x: fruitData.x + (this.treeOffsetX || 0), // Apply tree offset
-                        y: fruitData.y + (this.treeOffsetY || 0), // Apply tree offset
-                        type: fruitData.type,
-                        size: fruitData.size
-                    };
-                    this.tree.fruits.push(fruit);
-                });
-                
-                // Restore flowers
-                gameState.flowers.forEach(flowerData => {
-                    const flower = {
-                        x: flowerData.x + (this.treeOffsetX || 0), // Apply tree offset
-                        y: flowerData.y + (this.treeOffsetY || 0), // Apply tree offset
-                        type: flowerData.type,
-                        size: flowerData.size,
-                        sway: Math.random() * Math.PI * 2, // Generate random sway for animation
-                        branch: null // Will be set below if we can find the matching branch
-                    };
-                    
-                    // Try to find the branch this flower belongs to
-                    const matchingBranch = this.tree.branches.find(branch => 
-                        Math.abs(branch.end.x - flower.x) < 10 && 
-                        Math.abs(branch.end.y - flower.y) < 10
-                    );
-                    
-                    if (matchingBranch) {
-                        flower.branch = matchingBranch;
-                    }
-                    
-                    this.tree.flowers.push(flower);
-                });
-                
-                // Restore flashcards with proper node_position formatting and branch references
-                this.flashcards = (gameState.flashcards || []).map(flashcard => {
-                    let restoredFlashcard = { ...flashcard };
-                    
-                    // Convert node_position_x and node_position_y to node_position object
-                    if (flashcard.node_position_x !== undefined && flashcard.node_position_y !== undefined) {
-                        restoredFlashcard.node_position = {
-                            x: flashcard.node_position_x,
-                            y: flashcard.node_position_y
-                        };
-                    }
-                    
-                    // Try to find the branch this flashcard belongs to
-                    if (flashcard.branch_id) {
-                        // Find branch by ID (if we have branch IDs)
-                        const branch = this.tree.branches.find(b => b.id === flashcard.branch_id);
-                        if (branch) {
-                            restoredFlashcard.branch = branch;
-                            console.log(`Flashcard restored with branch (ID: ${flashcard.branch_id}, generation: ${branch.generation})`);
-                        } else {
-                            console.warn(`Branch not found for flashcard with branch_id: ${flashcard.branch_id}`);
-                        }
-                    } else if (restoredFlashcard.node_position) {
-                        // Find branch by position (fallback)
-                        const branch = this.tree.branches.find(branch => 
-                            Math.abs(branch.end.x - restoredFlashcard.node_position.x) < 20 && 
-                            Math.abs(branch.end.y - restoredFlashcard.node_position.y) < 20
-                        );
-                        if (branch) {
-                            restoredFlashcard.branch = branch;
-                            console.log(`Flashcard restored with branch by position (generation: ${branch.generation})`);
-                        } else {
-                            console.warn(`Branch not found for flashcard at position:`, restoredFlashcard.node_position);
-                        }
-                    }
-                    
-                    return restoredFlashcard;
-                });
-                
-                console.log(`Restored ${this.flashcards.length} flashcards with branch references`);
-                
-                this.currentSessionId = sessionId;
-                this.updateStatus(`Game state loaded! Query: ${this.originalSearchQuery}`);
-                console.log('Game state loaded successfully:', data);
-                
-                // Update the flashcard deck display
-                this.updateFlashcardDeck();
-                
-            } else {
-                console.error('Failed to load game state:', data.error);
-                this.updateStatus('Failed to load game state');
-            }
-            
-        } catch (error) {
-            console.error('Error loading game state:', error);
-            this.updateStatus('Error loading game state');
+            this.isLoadingGame = true;
+            this.updateStatus('Loading is temporarily disabled while we upgrade storage.');
+            console.warn('loadGameState called but feature is disabled');
         } finally {
-            this.isLoadingGame = false; // Reset flag
+            this.isLoadingGame = false;
         }
     }
     
     async getGameSessions() {
-        try {
-            const response = await fetch('http://localhost:8001/api/game-sessions');
-            const data = await response.json();
-            
-            if (data.success) {
-                return data.sessions;
-            } else {
-                console.error('Failed to get game sessions:', data.error);
-                return [];
-            }
-            
-        } catch (error) {
-            console.error('Error getting game sessions:', error);
-            return [];
-        }
+        console.warn('getGameSessions called but feature is disabled');
+        return [];
     }
     
     async deleteGameState(sessionId) {
-        try {
-            const response = await fetch('http://localhost:8001/api/delete-game-state', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ session_id: sessionId })
-            });
-            
-            const data = await response.json();
-            
-            if (data.success) {
-                this.updateStatus(`Game session ${sessionId} deleted successfully`);
-                console.log('Game session deleted:', data);
-            } else {
-                console.error('Failed to delete game session:', data.error);
-                this.updateStatus('Failed to delete game session');
-            }
-            
-        } catch (error) {
-            console.error('Error deleting game session:', error);
-            this.updateStatus('Error deleting game session');
-        }
+        console.warn('deleteGameState called but feature is disabled');
+        this.updateStatus('Deleting saves is temporarily disabled.');
     }
     
     hideStudyModal() {
