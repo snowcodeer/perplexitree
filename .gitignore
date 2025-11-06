@@ -21,3 +21,6 @@ api/
 # Documentation
 ARCHITECTURE.md
 DEPLOYMENT.md
+
+# Helpers
+notify.py
