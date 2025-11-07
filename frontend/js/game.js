@@ -30,6 +30,7 @@ class UltraSimplePrune {
 
         this.tree = null;
         this.lightSource = null;
+        this.fallingFruits = [];
 
         this.lastTime = 0;
         this.branchCount = 0;
@@ -295,6 +296,9 @@ class UltraSimplePrune {
         if (this.flashcardManager) {
             this.flashcardManager.reset();
         }
+        if (this.quizManager) {
+            this.quizManager.reset();
+        }
         if (this.searchManager) {
             this.searchManager.reset();
         }
@@ -308,6 +312,8 @@ class UltraSimplePrune {
         if (this.flashcardManager) {
             this.flashcardManager.closeAllDeckModals();
         }
+
+        this.fallingFruits = [];
 
         this.welcomeManager.startSequence();
         this.updateStatus('Game restarted! Enter a topic to begin learning.');

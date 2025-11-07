@@ -23,7 +23,16 @@ window.LearningFeature = class LearningFeature {
             return;
         }
 
-        await this.game.quizManager.startQuizFromFlashcards();
+        const targetBranch = node.fruit.branch;
+        const branchFlashcards = this.game.flashcardManager.getFlashcardsForBranch(targetBranch);
+
+        if (!branchFlashcards.length) {
+            this.game.updateStatus('Create flashcards on this branch before harvesting its fruit!');
+            return;
+        }
+
+        this.game.treeManager.animateFruitHarvest(node.fruit);
+        await this.game.quizManager.startQuizFromFlashcards(targetBranch);
     }
 
     async createQuizFromFlashcards() {

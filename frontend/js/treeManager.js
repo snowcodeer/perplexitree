@@ -177,6 +177,7 @@ window.TreeManager = class TreeManager {
                 parent: null
             };
 
+            this.assignBranchId(branch);
             this.game.tree.branches.push(branch);
         }
 
@@ -224,6 +225,7 @@ window.TreeManager = class TreeManager {
             parent: parentBranch
         };
 
+        this.assignBranchId(branch);
         this.game.tree.branches.push(branch);
         return branch;
     }
@@ -356,6 +358,22 @@ window.TreeManager = class TreeManager {
             return;
         }
 
+        const targetBranch = this.game.tree.branches.find(branch =>
+            Math.abs(branch.end.x - node.x) < 5 &&
+            Math.abs(branch.end.y - node.y) < 5
+        );
+
+        if (!targetBranch) {
+            this.game.updateStatus('Unable to identify branch for this node.');
+            return;
+        }
+
+        const branchHasLeaves = this.game.tree.leaves.some(leaf => leaf.branch === targetBranch);
+        if (!branchHasLeaves) {
+            this.game.updateStatus('Grow some leaves on this branch before blossoming a flower!');
+            return;
+        }
+
         const existingFlower = this.game.tree.flowers.find(flower =>
             Math.abs(flower.x - node.x) < 10 && Math.abs(flower.y - node.y) < 10
         );
@@ -374,10 +392,7 @@ window.TreeManager = class TreeManager {
             type: flowerType,
             size: 28 + Math.random() * 12,
             sway: Math.random() * Math.PI * 2,
-            branch: this.game.tree.branches.find(branch =>
-                Math.abs(branch.end.x - node.x) < 5 &&
-                Math.abs(branch.end.y - node.y) < 5
-            )
+            branch: targetBranch
         });
 
         this.game.updateStatus(`Blossomed knowledge with ${flowerType} on branch end!`);
@@ -474,6 +489,13 @@ window.TreeManager = class TreeManager {
             flower.y += treeOffsetY;
         });
 
+        if (this.game.fallingFruits?.length) {
+            this.game.fallingFruits.forEach(fruit => {
+                fruit.x += treeOffsetX;
+                fruit.y += treeOffsetY;
+            });
+        }
+
         this.game.tree.oldX = this.game.tree.x;
         this.game.tree.oldY = this.game.tree.y;
     }
@@ -550,5 +572,55 @@ window.TreeManager = class TreeManager {
         this.game.tree.flowers = [];
         this.game.tree.x = this.game.width / 2;
         this.game.tree.y = (this.game.initialHeight || this.game.height) - 40;
+        if (this.game.fallingFruits) {
+            this.game.fallingFruits = [];
+        }
+    }
+
+    animateFruitHarvest(fruit) {
+        if (!fruit) {
+            return;
+        }
+
+        this.game.tree.fruits = this.game.tree.fruits.filter(existing => existing !== fruit);
+
+        if (!this.game.fallingFruits) {
+            this.game.fallingFruits = [];
+        }
+
+        this.game.fallingFruits.push({
+            x: fruit.x,
+            y: fruit.y,
+            type: fruit.type,
+            size: fruit.size,
+            vx: (Math.random() - 0.5) * 1.2,
+            vy: -0.5 - Math.random() * 0.8,
+            gravity: 0.18 + Math.random() * 0.05,
+            rotation: 0,
+            spinSpeed: (Math.random() - 0.5) * 0.15,
+            bounceCount: 0,
+            landed: false,
+            fade: 0
+        });
+    }
+
+    assignBranchId(branch) {
+        if (!branch) {
+            return null;
+        }
+        if (!branch.id) {
+            if (!this.game.branchIdCounter) {
+                this.game.branchIdCounter = 1;
+            }
+            branch.id = `branch_${this.game.branchIdCounter++}`;
+        }
+        return branch.id;
+    }
+
+    assignIdsToBranches(branches) {
+        if (!Array.isArray(branches)) {
+            return;
+        }
+        branches.forEach(branch => this.assignBranchId(branch));
     }
 };
