@@ -53,10 +53,17 @@ class FlashcardManager {
         return grouped.has(topic) ? [...grouped.get(topic)] : [];
     }
 
-    getRandomFlashcards(count) {
-        const pool = [...this.flashcards].sort(() => Math.random() - 0.5);
+    getRandomFlashcards(count, sourceFlashcards = null) {
+        const pool = [...(sourceFlashcards || this.flashcards)].sort(() => Math.random() - 0.5);
         const limit = Math.min(count, pool.length);
         return pool.slice(0, limit);
+    }
+
+    getFlashcardsForBranch(branch) {
+        if (!branch) {
+            return [];
+        }
+        return this.flashcards.filter(card => card.branch === branch || card.branchId === branch.id);
     }
 
     async createFlashcardsForNode(node) {
@@ -77,7 +84,7 @@ class FlashcardManager {
                 return;
             }
 
-            this.showLoadingMessage('Loading flashcards...');
+            this.game.updateStatus('Loading flashcards...');
 
             const nodeX = node.x || node.end?.x || 0;
             const nodeY = node.y || node.end?.y || 0;
@@ -119,27 +126,36 @@ class FlashcardManager {
             if (!data.success) {
                 console.error('Flashcard generation failed:', data.error);
                 this.game.updateStatus(`Failed to create flashcards: ${data.error}`);
-                this.hideLoadingMessage();
                 return;
             }
 
+            const branchId = branch.id || (this.game.treeManager?.assignBranchId
+                ? this.game.treeManager.assignBranchId(branch)
+                : null);
+            const defaultNodePosition = {
+                x: branch?.end?.x ?? nodeX,
+                y: branch?.end?.y ?? nodeY
+            };
+
             const cards = data.flashcards.map(card => ({
                 ...card,
+                id: `flashcard_${Date.now()}_${Math.floor(Math.random() * 10000)}_${Math.random().toString(36).slice(2, 6)}`,
                 front: this.toProperCase(card.front),
                 back: this.toProperCase(card.back),
-                branch
+                branch,
+                branchId,
+                node_position: card.node_position || defaultNodePosition
             }));
 
             this.flashcards.push(...cards);
             this.updateFlashcardDeck();
+            this.ensureFlashcardStyles();
 
             this.game.updateStatus(`Created ${cards.length} flashcards for ${branch.searchResult.title}`);
-            this.showLoadingMessage('Flashcards ready!');
-            setTimeout(() => this.hideLoadingMessage(), 2000);
+            this.game.updateStatus('Flashcards ready!');
         } catch (error) {
             console.error('Error creating flashcards:', error);
             this.game.updateStatus('Error creating flashcards');
-            this.hideLoadingMessage();
         }
     }
 
@@ -150,9 +166,11 @@ class FlashcardManager {
             deckElement.id = 'flashcard-deck';
             deckElement.style.cssText = `
                 position: fixed;
-                bottom: 20px;
+                bottom: 70px;
                 left: 20px;
                 z-index: 100;
+                font-family: 'JetBrains Mono', 'Source Code Pro', 'Fira Code', 'Courier New', monospace;
+                text-transform: none;
             `;
             document.body.appendChild(deckElement);
         }
@@ -162,25 +180,34 @@ class FlashcardManager {
             return;
         }
 
+        this.ensureFlashcardStyles();
+        this.flashcards.forEach(card => {
+            if (!card.id) {
+                card.id = `flashcard_${Date.now()}_${Math.floor(Math.random() * 10000)}_${Math.random().toString(36).slice(2, 6)}`;
+            }
+        });
+
         const grouped = this.groupFlashcards();
         const totalCards = this.flashcards.length;
         const totalDecks = grouped.size;
 
         deckElement.innerHTML = `
             <button onclick="app.showDeckView()" style="
-                background: rgba(26, 26, 26, 0.95);
-                border: 2px solid #333;
-                border-radius: 10px;
-                padding: 12px 20px;
-                color: white;
-                font-family: 'Inter', sans-serif;
-                font-size: 14px;
+                background: rgba(67, 56, 202, 0.9);
+                border: 1px solid rgba(99, 102, 241, 0.6);
+                border-radius: 8px;
+                padding: 10px 16px;
+                color: #f8fafc;
+                font-family: 'JetBrains Mono', 'Source Code Pro', 'Fira Code', 'Courier New', monospace;
+                font-size: 13px;
                 font-weight: 500;
+                letter-spacing: 0.3px;
+                text-transform: none;
                 cursor: pointer;
-                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-                transition: background 0.2s;
-            " onmouseover="this.style.background='rgba(40, 40, 40, 0.95)'"
-              onmouseout="this.style.background='rgba(26, 26, 26, 0.95)'">
+                box-shadow: 0 6px 18px rgba(15, 23, 42, 0.35);
+                transition: background 0.2s, filter 0.2s;
+            " onmouseover="this.style.background='rgba(99, 102, 241, 1)'; this.style.filter='brightness(1.05)';"
+              onmouseout="this.style.background='rgba(67, 56, 202, 0.9)'; this.style.filter='none';">
                 📚 Flashcard Decks (${totalDecks} decks, ${totalCards} cards)
             </button>
         `;
@@ -293,6 +320,8 @@ class FlashcardManager {
             font-family: 'Inter', sans-serif;
         `;
 
+        const defaultPosition = (card) => card.node_position || { x: card.branch?.end?.x || 0, y: card.branch?.end?.y || 0 };
+
         modal.innerHTML = `
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
                 <h3 style="margin: 0; color: #fff;">Deck: ${topic}</h3>
@@ -300,7 +329,7 @@ class FlashcardManager {
             </div>
             <div id="deck-flashcards-container">
                 ${cards.map((card, index) => `
-                    <div class="flashcard" style="border: 1px solid #333; border-radius: 5px; margin: 10px 0; padding: 15px; background: #2a2a2a; cursor: pointer; font-family: 'Inter', sans-serif;" data-node-position='${JSON.stringify(card.node_position)}'>
+                    <div class="flashcard" style="border: 1px solid #334155; border-radius: 8px; margin: 10px 0; padding: 16px; background: #2a2a2a; cursor: pointer; font-family: 'Inter', sans-serif;" data-card-id='${card.id}' data-node-position='${JSON.stringify(defaultPosition(card))}' data-branch-id='${card.branchId || card.branch?.id || ''}'>
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
                             <span style="color: #3b82f6; font-weight: bold;">Card ${index + 1}</span>
                             <span style="color: #666; font-size: 12px;">${card.difficulty}</span>
@@ -311,8 +340,31 @@ class FlashcardManager {
                         <div style="margin-bottom: 10px;">
                             <strong style="color: #fff;">A:</strong> ${this.game.formatContent(card.back)}
                         </div>
-                        <div style="color: #3b82f6; font-size: 12px; text-align: center; margin-top: 10px; padding-top: 10px; border-top: 1px solid #333;">
-                            Click to highlight source node on tree
+                        <div style="display: flex; gap: 8px; margin-top: 12px;">
+                            <button onclick="event.stopPropagation(); app.highlightFlashcardSource('${card.id}');" style="
+                                flex: 1;
+                                background: rgba(67, 56, 202, 0.9);
+                                color: #f8fafc;
+                                border: 1px solid rgba(99, 102, 241, 0.6);
+                                border-radius: 6px;
+                                padding: 6px 10px;
+                                cursor: pointer;
+                                font-family: inherit;
+                                font-size: 12px;
+                                font-weight: 600;
+                            ">Highlight</button>
+                            <button onclick="event.stopPropagation(); app.deleteFlashcard('${card.id}');" style="
+                                flex: 1;
+                                background: rgba(239, 68, 68, 0.15);
+                                color: #fecaca;
+                                border: 1px solid rgba(248, 113, 113, 0.4);
+                                border-radius: 6px;
+                                padding: 6px 10px;
+                                cursor: pointer;
+                                font-family: inherit;
+                                font-size: 12px;
+                                font-weight: 600;
+                            ">Delete</button>
                         </div>
                     </div>
                 `).join('')}
@@ -324,8 +376,16 @@ class FlashcardManager {
         modal.querySelectorAll('.flashcard').forEach(element => {
             element.addEventListener('click', (event) => {
                 event.stopPropagation();
-                const nodePosition = JSON.parse(element.dataset.nodePosition);
-                this.highlightNodeFromFlashcard(nodePosition);
+                const branchId = element.dataset.branchId;
+                let nodePosition = null;
+                if (element.dataset.nodePosition) {
+                    try {
+                        nodePosition = JSON.parse(element.dataset.nodePosition);
+                    } catch (error) {
+                        console.warn('Invalid node position data:', error);
+                    }
+                }
+                this.highlightNodeFromFlashcard({ branchId, nodePosition });
             });
         });
 
@@ -356,6 +416,8 @@ class FlashcardManager {
             font-family: 'Inter', sans-serif;
         `;
 
+        const defaultPosition = (card) => card.node_position || { x: card.branch?.end?.x || 0, y: card.branch?.end?.y || 0 };
+
         modal.innerHTML = `
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
                 <h3 style="margin: 0; color: #fff;">Flashcards: ${topic}</h3>
@@ -363,7 +425,7 @@ class FlashcardManager {
             </div>
             <div id="flashcards-container">
                 ${flashcards.map((card, index) => `
-                    <div class="flashcard" style="border: 1px solid #333; border-radius: 5px; margin: 10px 0; padding: 15px; background: #2a2a2a; cursor: pointer; font-family: 'Inter', sans-serif;" data-node-position='${JSON.stringify(card.node_position)}'>
+                    <div class="flashcard" style="border: 1px solid #334155; border-radius: 8px; margin: 10px 0; padding: 16px; background: #2a2a2a; cursor: pointer; font-family: 'Inter', sans-serif;" data-card-id='${card.id}' data-node-position='${JSON.stringify(defaultPosition(card))}' data-branch-id='${card.branchId || card.branch?.id || ''}'>
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
                             <span style="color: #3b82f6; font-weight: bold;">Card ${index + 1}</span>
                             <span style="color: #666; font-size: 12px;">${card.difficulty}</span>
@@ -374,8 +436,31 @@ class FlashcardManager {
                         <div style="margin-bottom: 10px;">
                             <strong style="color: #fff;">A:</strong> ${this.game.formatContent(card.back)}
                         </div>
-                        <div style="color: #3b82f6; font-size: 12px; text-align: center; margin-top: 10px; padding-top: 10px; border-top: 1px solid #333;">
-                            Click to highlight source node on tree
+                        <div style="display: flex; gap: 8px; margin-top: 12px;">
+                            <button onclick="event.stopPropagation(); app.highlightFlashcardSource('${card.id}');" style="
+                                flex: 1;
+                                background: rgba(67, 56, 202, 0.9);
+                                color: #f8fafc;
+                                border: 1px solid rgba(99, 102, 241, 0.6);
+                                border-radius: 6px;
+                                padding: 6px 10px;
+                                cursor: pointer;
+                                font-family: inherit;
+                                font-size: 12px;
+                                font-weight: 600;
+                            ">Highlight</button>
+                            <button onclick="event.stopPropagation(); app.deleteFlashcard('${card.id}');" style="
+                                flex: 1;
+                                background: rgba(239, 68, 68, 0.15);
+                                color: #fecaca;
+                                border: 1px solid rgba(248, 113, 113, 0.4);
+                                border-radius: 6px;
+                                padding: 6px 10px;
+                                cursor: pointer;
+                                font-family: inherit;
+                                font-size: 12px;
+                                font-weight: 600;
+                            ">Delete</button>
                         </div>
                     </div>
                 `).join('')}
@@ -387,8 +472,16 @@ class FlashcardManager {
         modal.querySelectorAll('.flashcard').forEach(element => {
             element.addEventListener('click', (event) => {
                 event.stopPropagation();
-                const nodePosition = JSON.parse(element.dataset.nodePosition);
-                this.highlightNodeFromFlashcard(nodePosition);
+                const branchId = element.dataset.branchId;
+                let nodePosition = null;
+                if (element.dataset.nodePosition) {
+                    try {
+                        nodePosition = JSON.parse(element.dataset.nodePosition);
+                    } catch (error) {
+                        console.warn('Invalid node position data:', error);
+                    }
+                }
+                this.highlightNodeFromFlashcard({ branchId, nodePosition });
             });
         });
 
@@ -447,16 +540,42 @@ class FlashcardManager {
                 <div style="margin-bottom: 20px; border: 1px solid #333; border-radius: 5px; padding: 15px;">
                     <h4 style="color: #3b82f6; margin: 0 0 10px 0;">${topic} (${cards.length} cards)</h4>
                     ${cards.map((card, index) => `
-                        <div style="border: 1px solid #444; border-radius: 3px; margin: 8px 0; padding: 10px; background: #2a2a2a; font-family: 'Inter', sans-serif;">
+                        <div style="border: 1px solid #444; border-radius: 3px; margin: 8px 0; padding: 12px; background: #2a2a2a; font-family: 'Inter', sans-serif;">
                             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                                 <span style="color: #3b82f6; font-weight: bold;">Card ${index + 1}</span>
                                 <span style="color: #666; font-size: 12px;">${card.difficulty}</span>
                             </div>
-                            <div style="margin-bottom: 8px;">
-                                <strong style="color: #fff;">Q:</strong> ${this.game.formatContent(card.front)}
+                            <div class="flashcard-content">
+                                <strong>Q:</strong> ${this.game.formatContent(card.front)}
                             </div>
-                            <div>
-                                <strong style="color: #fff;">A:</strong> ${this.game.formatContent(card.back)}
+                            <div class="flashcard-content">
+                                <strong>A:</strong> ${this.game.formatContent(card.back)}
+                            </div>
+                            <div style="display: flex; gap: 8px; margin-top: 8px;">
+                                <button onclick="app.highlightFlashcardSource('${card.id}')" style="
+                                    flex: 1;
+                                    background: rgba(67, 56, 202, 0.9);
+                                    color: #f8fafc;
+                                    border: 1px solid rgba(99, 102, 241, 0.6);
+                                    border-radius: 6px;
+                                    padding: 6px 10px;
+                                    cursor: pointer;
+                                    font-family: inherit;
+                                    font-size: 12px;
+                                    font-weight: 600;
+                                ">Highlight</button>
+                                <button onclick="app.deleteFlashcard('${card.id}')" style="
+                                    flex: 1;
+                                    background: rgba(239, 68, 68, 0.15);
+                                    color: #fecaca;
+                                    border: 1px solid rgba(248, 113, 113, 0.4);
+                                    border-radius: 6px;
+                                    padding: 6px 10px;
+                                    cursor: pointer;
+                                    font-family: inherit;
+                                    font-size: 12px;
+                                    font-weight: 600;
+                                ">Delete</button>
                             </div>
                         </div>
                     `).join('')}
@@ -474,19 +593,41 @@ class FlashcardManager {
         });
     }
 
-    highlightNodeFromFlashcard(nodePosition) {
-        if (!nodePosition || !nodePosition.x || !nodePosition.y) {
-            console.warn('Invalid node position for highlighting:', nodePosition);
+    highlightNodeFromFlashcard(identifier) {
+        if (!identifier) {
+            console.warn('No highlight identifier provided');
             return;
+        }
+
+        let branchId = identifier.branchId || identifier.branch_id;
+        if (branchId === '' || branchId === 'null' || branchId === 'undefined') {
+            branchId = null;
+        }
+
+        let nodePosition = identifier.nodePosition || identifier.node_position;
+        if (!nodePosition && typeof identifier.x === 'number' && typeof identifier.y === 'number') {
+            nodePosition = { x: identifier.x, y: identifier.y };
         }
 
         this.closeAllDeckModals();
 
-        const target = this.game.tree.branches.find(branch => {
-            const distanceX = Math.abs(branch.end.x - nodePosition.x);
-            const distanceY = Math.abs(branch.end.y - nodePosition.y);
-            return distanceX < 20 && distanceY < 20;
-        });
+        let target = null;
+
+        if (branchId) {
+            target = this.game.tree.branches.find(branch => String(branch.id) === String(branchId));
+        }
+
+        if (!target && identifier.branch) {
+            target = identifier.branch;
+        }
+
+        if (!target && nodePosition && nodePosition.x !== undefined && nodePosition.y !== undefined) {
+            target = this.game.tree.branches.find(branch => {
+                const distanceX = Math.abs(branch.end.x - nodePosition.x);
+                const distanceY = Math.abs(branch.end.y - nodePosition.y);
+                return distanceX < 20 && distanceY < 20;
+            });
+        }
 
         if (!target) {
             this.game.updateStatus('Source node not found on tree');
@@ -515,13 +656,43 @@ class FlashcardManager {
         }
     }
 
+    deleteFlashcard(cardId) {
+        if (!cardId) {
+            return;
+        }
+
+        const initialLength = this.flashcards.length;
+        this.flashcards = this.flashcards.filter(card => card.id !== cardId);
+
+        if (this.flashcards.length !== initialLength) {
+            this.updateFlashcardDeck();
+            this.closeAllDeckModals();
+            this.game.updateStatus('Flashcard deleted.');
+        } else {
+            this.game.updateStatus('Flashcard not found.');
+        }
+    }
+
     removeFlashcardsFromBranches(removedBranches) {
         if (!removedBranches?.length) {
             return 0;
         }
 
         const removedSet = new Set(removedBranches);
-        const remaining = this.flashcards.filter(card => !removedSet.has(card.branch));
+        const removedIds = new Set(
+            removedBranches
+                .map(branch => branch?.id)
+                .filter(Boolean)
+        );
+        const remaining = this.flashcards.filter(card => {
+            if (removedSet.has(card.branch)) {
+                return false;
+            }
+            if (card.branchId && removedIds.has(card.branchId)) {
+                return false;
+            }
+            return true;
+        });
         const removedCount = this.flashcards.length - remaining.length;
 
         if (removedCount > 0) {
@@ -531,6 +702,41 @@ class FlashcardManager {
         }
 
         return removedCount;
+    }
+
+    ensureFlashcardStyles() {
+        if (document.getElementById('flashcard-content-styles')) {
+            return;
+        }
+
+        const style = document.createElement('style');
+        style.id = 'flashcard-content-styles';
+        style.textContent = `
+            .flashcard-content {
+                font-family: 'Inter', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
+                font-size: 14px;
+                line-height: 1.6;
+                color: #f8fafc;
+                margin-bottom: 10px;
+            }
+
+            .flashcard-content strong {
+                font-weight: 600;
+                margin-right: 6px;
+                color: inherit;
+            }
+
+            .flashcard-content p {
+                margin: 0 0 6px 0;
+                color: inherit;
+                font-family: inherit;
+            }
+
+            .flashcard-content p:last-child {
+                margin-bottom: 0;
+            }
+        `;
+        document.head.appendChild(style);
     }
 
     reset() {
@@ -611,7 +817,46 @@ class FlashcardManager {
         if (!str) {
             return '';
         }
-        return str.toLowerCase().replace(/\b\w/g, letter => letter.toUpperCase());
+
+        return str
+            .split('\n')
+            .map(line => this.formatLineForDisplay(line))
+            .join('\n');
+    }
+
+    formatLineForDisplay(line) {
+        if (!line || !line.trim()) {
+            return '';
+        }
+
+        const bulletMatch = line.match(/^(\s*[-*]\s+)(.*)$/);
+        const prefix = bulletMatch ? bulletMatch[1] : '';
+        const content = bulletMatch ? bulletMatch[2] : line.trim();
+
+        let expanded = content
+            .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+            .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
+            .replace(/([0-9])([A-Za-z])/g, '$1 $2')
+            .replace(/([A-Za-z])([0-9])/g, '$1 $2')
+            .replace(/([A-Za-z0-9])[_\-]+([A-Za-z0-9])/g, '$1 $2')
+            .replace(/\s+/g, ' ')
+            .trim();
+
+        if (!expanded) {
+            return prefix;
+        }
+
+        if (!/[A-Z]/.test(expanded)) {
+            expanded = expanded.replace(/\b[a-z]/g, letter => letter.toUpperCase());
+        } else {
+            expanded = expanded.replace(/^[a-z]/, letter => letter.toUpperCase());
+        }
+
+        expanded = expanded.replace(/([.!?]\s+)([a-z])/g, (_, punctuation, letter) => {
+            return punctuation + letter.toUpperCase();
+        });
+
+        return prefix + expanded;
     }
 
     findParentMainTopicBranch(childBranch) {

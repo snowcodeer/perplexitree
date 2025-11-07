@@ -19,6 +19,7 @@ class Renderer {
         this.renderBranches();
         this.renderLeaves();
         this.renderFruits();
+        this.renderFallingFruits();
         this.renderFlowers();
         this.renderLightSource();
         
@@ -191,6 +192,63 @@ class Renderer {
             
             this.ctx.restore();
         });
+    }
+
+    renderFallingFruits() {
+        if (!this.game.fallingFruits || this.game.fallingFruits.length === 0) {
+            return;
+        }
+
+        const groundHeight = 40;
+        const groundY = (this.game.initialHeight || this.game.height) - groundHeight;
+        const remaining = [];
+
+        this.game.fallingFruits.forEach(fruit => {
+            fruit.vy = (fruit.vy ?? 0) + (fruit.gravity ?? 0.2);
+            fruit.vx = fruit.vx ?? 0;
+            fruit.x += fruit.vx;
+            fruit.y += fruit.vy;
+            fruit.rotation = (fruit.rotation || 0) + (fruit.spinSpeed || 0);
+
+            if (fruit.y >= groundY - 5) {
+                fruit.y = groundY - 5;
+                if (Math.abs(fruit.vy) > 0.6 && (fruit.bounceCount || 0) < 2) {
+                    fruit.vy *= -0.35;
+                    fruit.vx *= 0.85;
+                    fruit.bounceCount = (fruit.bounceCount || 0) + 1;
+                } else {
+                    fruit.vy = 0;
+                    fruit.vx *= 0.8;
+                    fruit.landed = true;
+                }
+            }
+
+            if (fruit.landed) {
+                fruit.fade = (fruit.fade || 0) + 0.02;
+            }
+
+            const opacity = 1 - (fruit.fade || 0);
+            if (opacity <= 0) {
+                return;
+            }
+
+            this.ctx.save();
+            this.ctx.translate(fruit.x, fruit.y);
+            if (fruit.rotation) {
+                this.ctx.rotate(fruit.rotation);
+            }
+            this.ctx.globalAlpha = opacity;
+            this.ctx.font = `${fruit.size}px Arial`;
+            this.ctx.textAlign = 'center';
+            this.ctx.textBaseline = 'middle';
+            this.ctx.fillText(fruit.type, 0, 0);
+            this.ctx.restore();
+
+            remaining.push(fruit);
+        });
+
+        this.game.fallingFruits = remaining;
+        this.ctx.globalAlpha = 1;
     }
     
     renderFlowers() {
@@ -377,9 +435,49 @@ class Renderer {
     }
     
     toProperCase(str) {
-        return str.replace(/\w\S*/g, (txt) => {
-            return txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase();
+        if (!str) {
+            return '';
+        }
+
+        return str
+            .split('\n')
+            .map(line => this.formatLineForDisplay(line))
+            .join('\n');
+    }
+
+    formatLineForDisplay(line) {
+        if (!line || !line.trim()) {
+            return '';
+        }
+
+        const bulletMatch = line.match(/^(\s*[-*]\s+)(.*)$/);
+        const prefix = bulletMatch ? bulletMatch[1] : '';
+        const content = bulletMatch ? bulletMatch[2] : line.trim();
+
+        let expanded = content
+            .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+            .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
+            .replace(/([0-9])([A-Za-z])/g, '$1 $2')
+            .replace(/([A-Za-z])([0-9])/g, '$1 $2')
+            .replace(/([A-Za-z0-9])[_\-]+([A-Za-z0-9])/g, '$1 $2')
+            .replace(/\s+/g, ' ')
+            .trim();
+
+        if (!expanded) {
+            return prefix;
+        }
+
+        if (!/[A-Z]/.test(expanded)) {
+            expanded = expanded.replace(/\b[a-z]/g, letter => letter.toUpperCase());
+        } else {
+            expanded = expanded.replace(/^[a-z]/, letter => letter.toUpperCase());
+        }
+
+        expanded = expanded.replace(/([.!?]\s+)([a-z])/g, (_, punctuation, letter) => {
+            return punctuation + letter.toUpperCase();
         });
+
+        return prefix + expanded;
     }
     
     wrapText(text, maxWidth) {
