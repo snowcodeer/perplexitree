@@ -10,6 +10,8 @@ class QuizManager {
 
         this.savedQuizzes = [];
         this.activeQuizContext = null;
+        this.preparedQuizzes = new Map();
+        this.preparingBranches = new Set();
         this.updateQuizDeckButton();
     }
 
@@ -29,6 +31,7 @@ class QuizManager {
         }
 
         try {
+            this.game.updateStatus('Generating quiz...');
             const quizFlashcards = this.flashcardManager.getRandomFlashcards(5, branchFlashcards);
 
             if (quizFlashcards.length === 0) {
@@ -40,6 +43,7 @@ class QuizManager {
             const quizEntry = this.saveQuiz(questions, branch, branchFlashcards);
             this.activeQuizContext = quizEntry ? { quizId: quizEntry.id } : null;
             this.showQuizModal(questions);
+            this.game.updateStatus('Quiz ready!');
         } catch (error) {
             console.error('Error creating quiz:', error);
             this.game.updateStatus('Error creating quiz. Please try again.');
@@ -199,6 +203,74 @@ class QuizManager {
         };
     }
 
+    async prepareQuizForBranch(branch) {
+        if (!branch || !this.flashcardManager) {
+            return;
+        }
+
+        const branchId = branch.id || this.flashcardManager.game.treeManager?.assignBranchId?.(branch);
+        if (!branchId) {
+            return;
+        }
+
+        if (this.preparedQuizzes.has(branchId) || this.preparingBranches.has(branchId)) {
+            return;
+        }
+
+        const branchFlashcards = this.flashcardManager.getFlashcardsForBranch(branch);
+        if (!branchFlashcards.length) {
+            return;
+        }
+
+        const seedFlashcards = this.flashcardManager.getRandomFlashcards(5, branchFlashcards);
+        if (!seedFlashcards.length) {
+            return;
+        }
+
+        this.preparingBranches.add(branchId);
+        try {
+            const questions = await this.generateMultipleChoiceQuestions(seedFlashcards);
+            if (!questions?.length) {
+                return;
+            }
+            this.preparedQuizzes.set(branchId, {
+                branch,
+                flashcardsUsed: seedFlashcards,
+                questions: JSON.parse(JSON.stringify(questions))
+            });
+        } catch (error) {
+            console.error('Error preparing quiz for branch:', error);
+        } finally {
+            this.preparingBranches.delete(branchId);
+        }
+    }
+
+    consumePreparedQuiz(branch) {
+        if (!branch) {
+            return null;
+        }
+        const branchId = branch.id || this.flashcardManager.game.treeManager?.assignBranchId?.(branch);
+        if (!branchId) {
+            return null;
+        }
+        const prepared = this.preparedQuizzes.get(branchId);
+        if (prepared) {
+            this.preparedQuizzes.delete(branchId);
+            return prepared;
+        }
+        return null;
+    }
+
+    launchPreparedQuiz(prepared) {
+        if (!prepared?.questions?.length) {
+            return;
+        }
+        const quizEntry = this.saveQuiz(prepared.questions, prepared.branch, prepared.flashcardsUsed);
+        this.activeQuizContext = quizEntry ? { quizId: quizEntry.id } : null;
+        this.showQuizModal(prepared.questions);
+        this.game.updateStatus('Quiz ready!');
+    }
+
     persistQuizScore(score, totalQuestions, percentage) {
         if (!this.activeQuizContext?.quizId) {
             return;
@@ -272,7 +344,7 @@ class QuizManager {
             deckElement.id = 'quiz-deck';
             deckElement.style.cssText = `
                 position: fixed;
-                bottom: 120px;
+                bottom: 100px;
                 left: 20px;
                 z-index: 101;
                 font-family: 'JetBrains Mono', 'Source Code Pro', 'Fira Code', 'Courier New', monospace;
@@ -741,6 +813,15 @@ class QuizManager {
             this.savedQuizzes = remaining;
             this.updateQuizDeckButton();
         }
+
+        if (this.preparedQuizzes.size > 0 || this.preparingBranches.size > 0) {
+            removedIds.forEach(id => {
+                if (!id) return;
+                this.preparedQuizzes.delete(id);
+                this.preparingBranches.delete(id);
+            });
+        }
+
         return removedCount;
     }
 

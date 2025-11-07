@@ -322,14 +322,21 @@ window.TreeManager = class TreeManager {
         this.game.tree.flowers = this.game.tree.flowers.filter(f => f !== flower);
 
         const fruitType = '🍎';
+        const targetSize = 36 + Math.random() * 16;
         this.game.tree.fruits.push({
             x: flower.x,
             y: flower.y,
             type: fruitType,
-            size: 36 + Math.random() * 16,
+            size: targetSize,
+            targetSize,
+            growthProgress: 0,
             sway: Math.random() * Math.PI * 2,
             branch: flower.branch
         });
+
+        if (this.game.quizManager) {
+            this.game.quizManager.prepareQuizForBranch(flower.branch);
+        }
 
         this.game.updateStatus(`Transformed ${flower.type} into ${fruitType} - fruit of labour!`);
     }
@@ -371,6 +378,13 @@ window.TreeManager = class TreeManager {
         const branchHasLeaves = this.game.tree.leaves.some(leaf => leaf.branch === targetBranch);
         if (!branchHasLeaves) {
             this.game.updateStatus('Grow some leaves on this branch before blossoming a flower!');
+            return;
+        }
+
+        const hasFruit = this.game.tree.fruits.some(fruit => fruit.branch === targetBranch &&
+            Math.abs(fruit.x - node.x) < 10 && Math.abs(fruit.y - node.y) < 10);
+        if (hasFruit) {
+            this.game.updateStatus('Remove the fruit first before blossoming another flower!');
             return;
         }
 
@@ -520,10 +534,13 @@ window.TreeManager = class TreeManager {
                 const leafX = nodeX + Math.cos(angle) * distance;
                 const leafY = nodeY + Math.sin(angle) * distance;
 
+                const targetSize = 8 + Math.random() * 4;
                 this.game.tree.leaves.push({
                     x: leafX,
                     y: leafY,
-                    size: 8 + Math.random() * 4,
+                    size: targetSize,
+                    targetSize,
+                    growthProgress: 0,
                     sway: Math.random() * Math.PI * 2,
                     angle: Math.random() * Math.PI * 2,
                     branch: null
@@ -540,10 +557,13 @@ window.TreeManager = class TreeManager {
             const offsetX = (Math.random() - 0.5) * 6;
             const offsetY = (Math.random() - 0.5) * 6;
 
+            const targetSize = 8 + Math.random() * 8;
             this.game.tree.leaves.push({
                 x: leafX + offsetX,
                 y: leafY + offsetY,
-                size: 8 + Math.random() * 8,
+                size: targetSize,
+                targetSize,
+                growthProgress: 0,
                 angle: Math.random() * Math.PI * 2,
                 sway: Math.random() * Math.PI * 2,
                 branch,

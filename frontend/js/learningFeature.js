@@ -32,7 +32,15 @@ window.LearningFeature = class LearningFeature {
         }
 
         this.game.treeManager.animateFruitHarvest(node.fruit);
-        await this.game.quizManager.startQuizFromFlashcards(targetBranch);
+
+        const prepared = this.game.quizManager.consumePreparedQuiz(targetBranch);
+        if (prepared) {
+            this.game.quizManager.launchPreparedQuiz(prepared);
+            this.game.quizManager.prepareQuizForBranch(targetBranch); // warm next quiz
+            return;
+        }
+
+        this.game.updateStatus('Quiz is still generating for this branch. Try again in a moment!');
     }
 
     async createQuizFromFlashcards() {

@@ -134,9 +134,6 @@ class Renderer {
     }
     
     renderLeaves() {
-        if (this.game.tree.leaves.length > 0) {
-            console.log('Rendering', this.game.tree.leaves.length, 'leaves');
-        }
         this.game.tree.leaves.forEach(leaf => {
             // Update leaf position based on current branch position (for growing branches)
             if (leaf.branch && leaf.t !== undefined) {
@@ -149,6 +146,11 @@ class Renderer {
             
             const swayX = Math.sin(Date.now() * 0.002 + leaf.sway) * 1;
             const swayY = Math.cos(Date.now() * 0.0015 + leaf.sway) * 0.5;
+
+            const targetSize = leaf.size || leaf.targetSize || 10;
+            const growthProgress = Math.min((leaf.growthProgress ?? (targetSize ? 1 : 0)) + 0.02, 1);
+            leaf.growthProgress = growthProgress;
+            const renderSize = targetSize * Math.max(growthProgress, 0.1);
             
             this.ctx.save();
             this.ctx.translate(leaf.x + swayX, leaf.y + swayY);
@@ -156,14 +158,14 @@ class Renderer {
             
             this.ctx.fillStyle = '#4a6741'; // Muted olive green - more subtle
             this.ctx.beginPath();
-            this.ctx.ellipse(0, 0, leaf.size, leaf.size * 0.6, 0, 0, Math.PI * 2);
+            this.ctx.ellipse(0, 0, renderSize, renderSize * 0.6, 0, 0, Math.PI * 2);
             this.ctx.fill();
             
             this.ctx.strokeStyle = '#2d3e2d'; // Darker olive for border
             this.ctx.lineWidth = 0.5;
             this.ctx.beginPath();
-            this.ctx.moveTo(0, -leaf.size * 0.6);
-            this.ctx.lineTo(0, leaf.size * 0.6);
+            this.ctx.moveTo(0, -renderSize * 0.6);
+            this.ctx.lineTo(0, renderSize * 0.6);
             this.ctx.stroke();
             
             this.ctx.restore();
@@ -180,12 +182,17 @@ class Renderer {
             
             const swayX = Math.sin(Date.now() * 0.001 + fruit.sway) * 2;
             const swayY = Math.cos(Date.now() * 0.0015 + fruit.sway) * 1;
+
+            const targetSize = fruit.size || fruit.targetSize || 30;
+            const growthProgress = Math.min((fruit.growthProgress ?? (targetSize ? 1 : 0)) + 0.02, 1);
+            fruit.growthProgress = growthProgress;
+            const renderSize = targetSize * Math.max(growthProgress, 0.2);
             
             this.ctx.save();
             this.ctx.translate(fruit.x + swayX, fruit.y + swayY);
             
             // Draw fruit with emoji
-            this.ctx.font = `${fruit.size}px Arial`;
+            this.ctx.font = `${renderSize}px Arial`;
             this.ctx.textAlign = 'center';
             this.ctx.textBaseline = 'middle';
             this.ctx.fillText(fruit.type, 0, 0);

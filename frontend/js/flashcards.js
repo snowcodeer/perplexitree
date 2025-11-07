@@ -166,7 +166,7 @@ class FlashcardManager {
             deckElement.id = 'flashcard-deck';
             deckElement.style.cssText = `
                 position: fixed;
-                bottom: 70px;
+                bottom: 50px;
                 left: 20px;
                 z-index: 100;
                 font-family: 'JetBrains Mono', 'Source Code Pro', 'Fira Code', 'Courier New', monospace;
