@@ -40,7 +40,12 @@ window.LearningFeature = class LearningFeature {
             return;
         }
 
-        this.game.updateStatus('Quiz is still generating for this branch. Try again in a moment!');
+        try {
+            await this.game.quizManager.startQuizFromFlashcards(targetBranch);
+        } finally {
+            // Always queue the next quiz so harvesting stays instant after fallback.
+            this.game.quizManager.prepareQuizForBranch(targetBranch);
+        }
     }
 
     async createQuizFromFlashcards() {

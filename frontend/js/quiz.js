@@ -11,7 +11,7 @@ class QuizManager {
         this.savedQuizzes = [];
         this.activeQuizContext = null;
         this.preparedQuizzes = new Map();
-        this.preparingBranches = new Set();
+        this.preparingBranches = new Map();
         this.updateQuizDeckButton();
     }
 
@@ -205,44 +205,60 @@ class QuizManager {
 
     async prepareQuizForBranch(branch) {
         if (!branch || !this.flashcardManager) {
-            return;
+            return null;
         }
 
         const branchId = branch.id || this.flashcardManager.game.treeManager?.assignBranchId?.(branch);
         if (!branchId) {
-            return;
+            return null;
         }
 
-        if (this.preparedQuizzes.has(branchId) || this.preparingBranches.has(branchId)) {
-            return;
+        if (this.preparedQuizzes.has(branchId)) {
+            return this.preparedQuizzes.get(branchId);
+        }
+
+        if (this.preparingBranches.has(branchId)) {
+            try {
+                return await this.preparingBranches.get(branchId);
+            } catch (error) {
+                console.error('Error awaiting quiz preparation:', error);
+                return null;
+            }
         }
 
         const branchFlashcards = this.flashcardManager.getFlashcardsForBranch(branch);
         if (!branchFlashcards.length) {
-            return;
+            return null;
         }
 
         const seedFlashcards = this.flashcardManager.getRandomFlashcards(5, branchFlashcards);
         if (!seedFlashcards.length) {
-            return;
+            return null;
         }
 
-        this.preparingBranches.add(branchId);
-        try {
-            const questions = await this.generateMultipleChoiceQuestions(seedFlashcards);
-            if (!questions?.length) {
-                return;
+        const prepPromise = (async () => {
+            try {
+                const questions = await this.generateMultipleChoiceQuestions(seedFlashcards);
+                if (!questions?.length) {
+                    return null;
+                }
+                const preparedPayload = {
+                    branch,
+                    flashcardsUsed: seedFlashcards,
+                    questions: JSON.parse(JSON.stringify(questions))
+                };
+                this.preparedQuizzes.set(branchId, preparedPayload);
+                return preparedPayload;
+            } catch (error) {
+                console.error('Error preparing quiz for branch:', error);
+                return null;
+            } finally {
+                this.preparingBranches.delete(branchId);
             }
-            this.preparedQuizzes.set(branchId, {
-                branch,
-                flashcardsUsed: seedFlashcards,
-                questions: JSON.parse(JSON.stringify(questions))
-            });
-        } catch (error) {
-            console.error('Error preparing quiz for branch:', error);
-        } finally {
-            this.preparingBranches.delete(branchId);
-        }
+        })();
+
+        this.preparingBranches.set(branchId, prepPromise);
+        return prepPromise;
     }
 
     consumePreparedQuiz(branch) {
