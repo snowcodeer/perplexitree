@@ -150,6 +150,63 @@ class PruneApp {
             this.game.flashcardManager.showDeckView();
         }
     }
+
+    showQuizDeckView() {
+        if (this.game?.quizManager) {
+            this.game.quizManager.showQuizDeckView();
+        }
+    }
+
+    showSavedQuizzes(topic) {
+        if (this.game?.quizManager) {
+            this.game.quizManager.showDeckQuizzes(topic);
+        }
+    }
+
+    showAllQuizzes() {
+        if (this.game?.quizManager) {
+            this.game.quizManager.showAllSavedQuizzes();
+        }
+    }
+
+    playSavedQuiz(quizId) {
+        if (this.game?.quizManager) {
+            this.game.quizManager.startSavedQuiz(quizId);
+        }
+    }
+
+    highlightQuizSource(quizId) {
+        if (this.game?.quizManager) {
+            this.game.quizManager.highlightQuizSource(quizId);
+        }
+    }
+
+    highlightFlashcardSource(cardId) {
+        if (!this.game?.flashcardManager) {
+            return;
+        }
+        const card = this.game.flashcardManager.flashcards.find(c => c.id === cardId);
+        if (!card) {
+            this.game.updateStatus('Flashcard not found.');
+            return;
+        }
+        const branch = card.branch;
+        const branchId = card.branchId || branch?.id || this.game.treeManager?.assignBranchId(branch);
+        const nodePosition = card.node_position || (branch?.end ? { x: branch.end.x, y: branch.end.y } : null);
+        this.game.highlightNodeAtPosition({ branchId, nodePosition });
+    }
+
+    deleteFlashcard(cardId) {
+        if (this.game?.flashcardManager) {
+            this.game.flashcardManager.deleteFlashcard(cardId);
+        }
+    }
+
+    deleteQuiz(quizId) {
+        if (this.game?.quizManager) {
+            this.game.quizManager.deleteQuiz(quizId);
+        }
+    }
     
     restartGame() {
         // Reset the game state

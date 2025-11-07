@@ -8,10 +8,19 @@ class PruningSystem {
     
     performPruning() {
         if (!this.game.dragStart || !this.game.dragEnd) return;
+
+        const lineStart = {
+            x: this.game.dragStart.x - this.game.cameraOffset.x,
+            y: this.game.dragStart.y - this.game.cameraOffset.y
+        };
+        const lineEnd = {
+            x: this.game.dragEnd.x - this.game.cameraOffset.x,
+            y: this.game.dragEnd.y - this.game.cameraOffset.y
+        };
         
         const cutLength = Math.sqrt(
-            Math.pow(this.game.dragEnd.x - this.game.dragStart.x, 2) + 
-            Math.pow(this.game.dragEnd.y - this.game.dragStart.y, 2)
+            Math.pow(lineEnd.x - lineStart.x, 2) + 
+            Math.pow(lineEnd.y - lineStart.y, 2)
         );
         
         if (cutLength < 10) {
@@ -23,7 +32,7 @@ class PruningSystem {
             if (branch.length < branch.maxLength) {
                 return false;
             }
-            return this.lineIntersectsBranch(this.game.dragStart, this.game.dragEnd, branch);
+            return this.lineIntersectsBranch(lineStart, lineEnd, branch);
         });
         
         const disconnectedBranches = this.findDisconnectedBranchesAfterCut(directlyCutBranches);
@@ -144,6 +153,13 @@ class PruningSystem {
 
         if (removedCount > 0) {
             console.log(`Removed ${removedCount} flashcards from pruned branches`);
+        }
+
+        if (this.game.quizManager) {
+            const removedQuizzes = this.game.quizManager.removeQuizzesFromBranches(removedBranches);
+            if (removedQuizzes > 0) {
+                console.log(`Removed ${removedQuizzes} quizzes from pruned branches`);
+            }
         }
     }
     
